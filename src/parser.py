@@ -6,7 +6,7 @@ class DocumentParser:
     """
     Layout-aware documentation parser that ingests Markdown/MDX
     and splits it into hierarchical Parent (Sections) and Child (Code, Tables, Paragraphs)
-    chunks with full metadata lineage, context propagation, and internal link mapping.
+    chunks with full metadata lineage context propagation.
     """
     def __init__(self, file_path: str, framework: str, version: str):
         self.file_path = file_path
@@ -23,7 +23,7 @@ class DocumentParser:
         Extracts YAML front matter tags (like title, description) at the start of MD/MDX files.
         Returns a dictionary of front matter metadata and the remaining stripped content.
         """
-        meta = {"title": "", "description": ""}
+        meta = {"title": "", "description": "", "sidebarTitle": ""}
         # Match YAML block at the absolute start of the file
         match = re.match(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
         if match:
