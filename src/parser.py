@@ -2,9 +2,9 @@ import os
 import re
 from typing import List, Dict, Any, Tuple
 
-class AdvancedDocParser:
+class DocumentParser:
     """
-    An enterprise-grade, layout-aware documentation parser that ingests Markdown/MDX
+    Layout-aware documentation parser that ingests Markdown/MDX
     and splits it into hierarchical Parent (Sections) and Child (Code, Tables, Paragraphs)
     chunks with full metadata lineage, context propagation, and internal link mapping.
     """
@@ -39,25 +39,6 @@ class AdvancedDocParser:
             # Strip the YAML block from the main content body
             content = content[match.end():]
         return meta, content
-
-    def extract_internal_links(self, text: str) -> List[Dict[str, str]]:
-        """
-        Finds all internal markdown links referencing other docs (.md, .mdx, or anchors).
-        Excludes external web addresses (http/https).
-        """
-        # Match [Anchor Text](relative_path_or_anchor)
-        link_pattern = r'\[([^\]]+)\]\(([^)]+)\)'
-        found_links = re.findall(link_pattern, text)
-        
-        internal_links = []
-        for anchor, target in found_links:
-            # Filter out web URLs, keeping local files and anchors
-            if not target.startswith(('http://', 'https://', 'mailto:')):
-                internal_links.append({
-                    "anchor_text": anchor.strip(),
-                    "target_path": target.strip()
-                })
-        return internal_links
 
     def _extract_child_elements(self, section_text: str) -> Tuple[List[str], List[str], List[str]]:
         """
@@ -103,9 +84,6 @@ class AdvancedDocParser:
         front_matter, content = self.parse_yaml_front_matter(raw_content)
         doc_title = front_matter.get("title") or file_base.replace('_md', '').replace('_mdx', '').title()
         
-        # Harvest document relationships
-        related_links = self.extract_internal_links(content)
-        
         # Split document by Heading 2 (##) boundaries
         # This keeps heading-level chunks as our manageable structural Parents
         sections = re.split(r'\n(##\s+[^\n]+)\n', '\n' + content)
@@ -140,7 +118,6 @@ class AdvancedDocParser:
                     "global_title": doc_title,
                     "section_heading": header,
                     "sub_headings": sub_headings,
-                    "related_links": related_links,
                     "doc_id": global_doc_id
                 }
             })
@@ -200,4 +177,4 @@ class AdvancedDocParser:
         return chunks
 
 if __name__ == "__main__":
-    print("Advanced Documentation Parser module compiled successfully.")
+    print("Documentation Parser module compiled successfully.")
