@@ -42,17 +42,34 @@ class DocumentParser:
 
     def _extract_child_elements(self, section_text: str) -> Tuple[List[str], List[str], List[str]]:
         """
-        Isolates child fragments within a section: code blocks, tables, and remaining paragraphs.
+        Isolates child fragments within a section: code blocks of any language (with metadata),
+        markdown tables, and remaining descriptive text paragraphs.
+        
+        Returns:
+            A tuple of (list of code dicts with text and lang, list of tables, list of paragraphs)
         """
         # Define 3 backticks dynamically using hex values to prevent markdown parsing errors in UI
         bt = '\x60\x60\x60'
         
-        # 1. Extract Python Code Blocks (using dynamically constructed backticks regex)
-        code_pattern = rf'({bt}python\s+.*?{bt})'
-        code_blocks = re.findall(code_pattern, section_text, re.DOTALL)
+        # 1. Extract Universal Code Blocks (any language tag immediately following backticks)
+        # Regex matches ```lang \n code \n ```
+        code_pattern = rf'{bt}([a-zA-Z0-9_\-]+)\s*?\n(.*?)\n{bt}'
+        raw_code_matches = re.findall(code_pattern, section_text, re.DOTALL)
         
-        # Strip code blocks to parse tables easily
-        stripped_text = re.sub(code_pattern, '', section_text, flags=re.DOTALL)
+        code_blocks = []
+        for lang, code_body in raw_code_matches:
+            # Reconstruct the raw markdown representation of this block for clean LLM display
+            raw_markdown = f"```{lang}\n{code_body}\n```"
+            code_blocks.append({
+                "language": lang.lower(),
+                "code": code_body.strip(),
+                "raw_text": raw_markdown
+            })
+            
+        # Strip all code blocks to avoid conflict while parsing tables
+        # Use a simpler pattern that targets any code block to clean the text structure
+        clear_code_pattern = rf'{bt}[a-zA-Z0-9_\-]*\s*?\n.*?\n{bt}'
+        stripped_text = re.sub(clear_code_pattern, '', section_text, flags=re.DOTALL)
         
         # 2. Extract Markdown Tables
         table_pattern = r'(\|[^\n]+\|\r?\n\|[ \t]*:?---:?[ \t]*(?:\|[ \t]*:?---:?[ \t]*)*\|\r?\n(?:\|[^\n]+\|\r?\n?)*)'
@@ -70,7 +87,7 @@ class DocumentParser:
             if len(cleaned) > 20 and not cleaned.startswith('#'):
                 paragraphs.append(cleaned)
                 
-        return code_blocks, tables, paragraphs
+        return (code_blocks, tables, paragraphs)
 
     def parse(self) -> List[Dict[str, Any]]:
         """
@@ -125,18 +142,19 @@ class DocumentParser:
             # Extract granular children from this section's body
             codes, tables, paragraphs = self._extract_child_elements(section_body)
             
-            # Add Code Children
-            for idx, code in enumerate(codes):
+            # Add Code Children (Supports Py, JS, TS, Bash, JSON, etc. with metadata)
+            for idx, code_data in enumerate(codes):
                 chunks.append({
                     "id": f"{parent_id}_child_code_{idx}",
                     "type": "child",
-                    "text": code,
+                    "text": code_data["raw_text"],
                     "metadata": {
                         "parent_id": parent_id,
                         "source_file": self.file_path,
                         "framework": self.framework,
                         "version": self.version,
                         "content_category": "code_snippet",
+                        "code_language": code_data["language"],
                         "breadcrumbs": f"{doc_title} > {header}"
                     }
                 })
