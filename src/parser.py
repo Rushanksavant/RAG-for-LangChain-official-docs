@@ -53,7 +53,7 @@ class DocumentParser:
         
         # 1. Extract Universal Code Blocks (any language tag immediately following backticks)
         # Regex matches ```lang \n code \n ```
-        code_pattern = rf'{bt}([a-zA-Z0-9_\-]+)\s*?\n(.*?)\n{bt}'
+        code_pattern = rf'{bt}([a-zA-Z0-9_\-]+)\s*?\n(.*?)\n{bt}' # this has two groups, language and code body
         raw_code_matches = re.findall(code_pattern, section_text, re.DOTALL)
         
         code_blocks = []
@@ -61,14 +61,14 @@ class DocumentParser:
             # Reconstruct the raw markdown representation of this block for clean LLM display
             raw_markdown = f"```{lang}\n{code_body}\n```"
             code_blocks.append({
-                "language": lang.lower(),
-                "code": code_body.strip(),
-                "raw_text": raw_markdown
+                "language": lang.lower(), # to be stored in chunks 
+                "code": code_body.strip(), # won't be stored in chunks
+                "raw_text": raw_markdown # to be stored in chunks
             })
             
         # Strip all code blocks to avoid conflict while parsing tables
         # Use a simpler pattern that targets any code block to clean the text structure
-        clear_code_pattern = rf'{bt}[a-zA-Z0-9_\-]*\s*?\n.*?\n{bt}'
+        clear_code_pattern = rf'{bt}[a-zA-Z0-9_\-]*\s*?\n.*?\n{bt}' # this only catches the entire codeblocks
         stripped_text = re.sub(clear_code_pattern, '', section_text, flags=re.DOTALL)
         
         # 2. Extract Markdown Tables
