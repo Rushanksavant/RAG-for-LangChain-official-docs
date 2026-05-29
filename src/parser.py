@@ -78,14 +78,35 @@ class DocumentParser:
         # Strip tables to leave only plain descriptive text paragraphs
         stripped_text = re.sub(table_pattern, '', stripped_text, flags=re.MULTILINE)
         
-        # 3. Extract Paragraphs (split by double newlines, clean out excess spaces)
+        # 3. Smart Paragraph Accumulator (Prevents 1-liners)
+        # We split by double newline, but merge adjacent short texts up to a target size
         raw_paragraphs = stripped_text.split('\n\n')
         paragraphs = []
+        
+        current_chunk = []
+        current_len = 0
+        TARGET_MIN_CHARS = 450  # Sweet spot for semantic search relevance (approx 70-90 words)
+        
         for p in raw_paragraphs:
             cleaned = p.strip()
-            # Avoid keeping tiny fragment strings or leftover headers
-            if len(cleaned) > 20 and not cleaned.startswith('#'):
-                paragraphs.append(cleaned)
+            # Skip empty lines, separators, and headings
+            if not cleaned or len(cleaned) < 10 or cleaned.startswith('#'):
+                continue
+                
+            current_chunk.append(cleaned)
+            current_len += len(cleaned)
+            
+            # If our accumulated block meets the structural density target, pack it
+            if current_len >= TARGET_MIN_CHARS:
+                paragraphs.append("\n\n".join(current_chunk))
+                current_chunk = []
+                current_len = 0
+                
+        # Append any residual texts left over in the buffer
+        if current_chunk:
+            combined_residual = "\n\n".join(current_chunk)
+            if len(combined_residual) > 20:  # Protect against tiny noise fragments
+                paragraphs.append(combined_residual)
                 
         return (code_blocks, tables, paragraphs)
 
