@@ -1,6 +1,5 @@
 # Using pre-defined official Qdrant images
 # Hence no build (Docker file) required. Just need to manage the flow in docker-compose.yml
-version: '3.8'
 
 services:
   qdrant_engine:
