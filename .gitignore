@@ -19,3 +19,6 @@ dev.md
 
 ## ignore .vscode settings 
 .vscode/
+
+## ignore vectordB
+data/qdrant_dB

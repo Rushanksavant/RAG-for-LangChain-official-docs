@@ -3,54 +3,47 @@ import json
 import os
 import uuid
 import logging
-from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct
-from sentence_transformers import SentenceTransformer
+from qdrant_client import QdrantClient, models
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 def generate_deterministic_uuid(source_string: str) -> str:
-    """Generates a consistent UUIDv5 based on a string name to ensure idempotency."""
+    """Generating a stable UUID matching the chunk ID."""
     namespace = uuid.NAMESPACE_DNS
     return str(uuid.uuid5(namespace, source_string))
 
-def build_and_index_vectors():
+def run_indexing_pipeline():
     chunks_path = "data/processed/chunks.json"
-    collection_name = "documentation_chunks"
+    collection_name = "documentation_chunks" # as initialized in init_vectordB.py
     
-    if not os.path.exists(chunks_path):
-        logging.error(f"Missing chunks database at {chunks_path}. Run your parser pipeline first!")
+    if not os.path.exists(chunks_path): # verify if chunks exist
+        logging.error("Missing chunks.json! Run your parser runner first.")
         return
         
-    # 1. Connect to local DB and load the embedding model
-    client = QdrantClient(path="./data/qdrant_storage")
-    logging.info("Loading local embedding model ('all-MiniLM-L6-v2')...")
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    client = QdrantClient(url="http://localhost:6333") # connect local Qdrant client to Qdrant engine (running in docker container)
     
-    # 2. Read parsed chunks file
+    # Register the BGE-M3 engine wrapper within the Qdrant client framework
+    # FastEmbed library in client downloads the weights once to your machine (~/.fastembed/models/)
+    BGE_M3_MODEL = "BAAI/bge-m3"
+    client.set_model(BGE_M3_MODEL) # for dense vectors
+    client.set_sparse_model(BGE_M3_MODEL) # for sparse vectors
+    
+    # loading chunks
     with open(chunks_path, "r", encoding="utf-8") as f:
         all_chunks = json.load(f)
-        
-    # REMEMBER STRATEGY: We ONLY embed 'child' chunks to keep the index lean and hyper-focused
+    # picking only child chunks for indexing    
     child_chunks = [c for c in all_chunks if c["type"] == "child"]
-    logging.info(f"Found {len(child_chunks)} target child chunks ready for vectorization.")
+    logging.info(f"Vectorizing {len(child_chunks)} child nodes via local BGE-M3 processor...")
     
-    points = []
+    points = [] # vectors here
     
-    # 3. Vectorize and transform chunks into Qdrant Points
     for idx, chunk in enumerate(child_chunks):
-        text_to_embed = chunk["text"]
+        text_content = chunk["text"] # extracting chunk content
+        point_id = generate_deterministic_uuid(chunk["id"]) # generating id
         
-        # Compute vector embeddings via CPU/GPU
-        vector = model.encode(text_to_embed).tolist()
-        
-        # Generate a stable UUID based on chunk ID so we can run updates safely without duplicates
-        point_id = generate_deterministic_uuid(chunk["id"])
-        
-        # Build the Qdrant Point Payload structure
-        payload = {
+        payload = { # mapping meta data from child chunks to be stored in vectordB
             "chunk_id": chunk["id"],
-            "text": text_to_embed,
+            "text": text_content,
             "parent_id": chunk["metadata"].get("parent_id"),
             "framework": chunk["metadata"].get("framework"),
             "content_category": chunk["metadata"].get("content_category"),
@@ -58,20 +51,29 @@ def build_and_index_vectors():
             "source_file": chunk["metadata"].get("source_file")
         }
         
-        points.append(PointStruct(id=point_id, vector=vector, payload=payload))
+        # Document maps text to both dense and sparse vectors via underlying ONNX model
+        points.append(
+            models.PointStruct(
+                id=point_id,
+                payload=payload,
+                vector={
+                    "dense": models.Document(text=text_content, model=BGE_M3_MODEL),
+                    "sparse": models.Document(text=text_content, model=BGE_M3_MODEL)
+                }
+            )
+        )
         
-        # Batch upsert every 500 records to maximize throughput and keep memory low
-        if len(points) >= 500:
-            logging.info(f"Upserting batch of {len(points)} points... (Progress: {idx+1}/{len(child_chunks)})")
-            client.upsert(collection_name=collection_name, points=points)
+        # Batch upload to maximize throughput over the network API boundary
+        if len(points) >= 64:
+            logging.info(f"Streaming batch to container... (Progress: {idx+1}/{len(child_chunks)})")
+            client.upload_points(collection_name=collection_name, points=points)
             points = []
             
-    # Upsert any remaining points in the buffer
-    if points:
-        logging.info(f"Upserting final residue batch of {len(points)} points...")
-        client.upsert(collection_name=collection_name, points=points)
+    if points: # if left-over chunks (since we are uploading in batches of 64)
+        logging.info(f"Streaming final residue batch of {len(points)} points...")
+        client.upload_points(collection_name=collection_name, points=points)
         
-    logging.info("🎉 Vector indexing complete! Your local database is fully populated.")
+    logging.info("🎉 Database population complete! All chunks securely indexed in the container system.")
 
 if __name__ == "__main__":
-    build_and_index_vectors()
+    run_indexing_pipeline()
