@@ -13,4 +13,4 @@ services:
     volumes:
       # This links physical local folder to the container's internal storage
       # "../data/qdrant_storage" moves up one level out of the docker folder into data directory
-      - ../data/qdrant_storage:/qdrant/storage
+      - ../data/qdrant_dB:/qdrant/storage
