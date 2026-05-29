@@ -1,6 +1,6 @@
 import logging
 from qdrant_client import QdrantClient, models
-from qdrant_client.errors import UnexpectedResponse
+from qdrant_client.http.exceptions import UnexpectedResponse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
