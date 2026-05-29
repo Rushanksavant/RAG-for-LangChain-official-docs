@@ -22,3 +22,7 @@ dev.md
 
 ## ignore vectordB
 data/qdrant_dB
+
+## ignore uploading model weights
+.fastembed/
+__pycache__/

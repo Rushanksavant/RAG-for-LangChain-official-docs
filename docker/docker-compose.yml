@@ -1,0 +1,16 @@
+# Using pre-defined official Qdrant images
+# Hence no build (Docker file) required. Just need to manage the flow in docker-compose.yml
+version: '3.8'
+
+services:
+  qdrant_engine:
+    image: qdrant/qdrant:v1.13.2
+    container_name: qdrant_production_engine
+    restart: always
+    ports:
+      - '6333:6333' # HTTP API Port (Used by init_vector_db.py and index_chunks.py)
+      - '6334:6334' # gRPC Port (For high-speed communication if needed later)
+    volumes:
+      # This links physical local folder to the container's internal storage
+      # "../data/qdrant_storage" moves up one level out of the docker folder into data directory
+      - ../data/qdrant_storage:/qdrant/storage
