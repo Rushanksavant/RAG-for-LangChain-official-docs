@@ -322,7 +322,14 @@ class DocumentParser:
         """
         Converts raw extracted elements into well-formed child chunk dicts.
         Centralised here so intro and section blocks share identical structure.
+
+        Filters applied:
+          - MIN_CHILD_CHARS = 80:  drops empty code fences, single-word fragments
+          - MAX_CHILD_CHARS = 50000: drops base64 blobs and other non-text noise
         """
+        MIN_CHILD_CHARS = 80
+        MAX_CHILD_CHARS = 50_000
+
         children = []
         breadcrumb = f"{doc_title} > {section_header}"
 
@@ -335,6 +342,8 @@ class DocumentParser:
         }
 
         for idx, code in enumerate(codes):
+            if not (MIN_CHILD_CHARS <= len(code["raw_text"]) <= MAX_CHILD_CHARS):
+                continue
             children.append({
                 "id": f"{parent_id}_child_code_{idx}",
                 "type": "child",
@@ -347,6 +356,8 @@ class DocumentParser:
             })
 
         for idx, table in enumerate(tables):
+            if not (MIN_CHILD_CHARS <= len(table) <= MAX_CHILD_CHARS):
+                continue
             children.append({
                 "id": f"{parent_id}_child_table_{idx}",
                 "type": "child",
@@ -358,6 +369,8 @@ class DocumentParser:
             })
 
         for idx, para in enumerate(paragraphs):
+            if not (MIN_CHILD_CHARS <= len(para) <= MAX_CHILD_CHARS):
+                continue
             children.append({
                 "id": f"{parent_id}_child_para_{idx}",
                 "type": "child",

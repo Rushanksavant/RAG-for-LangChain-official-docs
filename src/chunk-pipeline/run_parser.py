@@ -25,7 +25,7 @@ EXCLUDED_FILES = {"readme.md", "license.md", "contributing.md",
     "claude.md",          # Mintlify AI assistant config — not user-facing docs
     "code_of_conduct.md", "changelog.md", "index.md", "index.mdx",
     "template.mdx",       # Integration page templates — boilerplate, not real docs
-    "_template.mdx",
+    "_template.mdx", "google_imagen.mdx",
     "docs.json",          # Mintlify nav config — not a content file
 }
 
