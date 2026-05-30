@@ -5,6 +5,8 @@ import uuid
 import logging
 from qdrant_client import QdrantClient, models
 
+from fastembed import TextEmbedding, SparseTextEmbedding # for dense and sparse vectors
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 def generate_deterministic_uuid(source_string: str) -> str:
@@ -22,11 +24,11 @@ def run_indexing_pipeline():
         
     client = QdrantClient(url="http://localhost:6333") # connect local Qdrant client to Qdrant engine (running in docker container)
     
-    # Register the BGE-M3 engine wrapper within the Qdrant client framework
-    # FastEmbed library in client downloads the weights once to your machine (~/.fastembed/models/)
-    BGE_M3_MODEL = "BAAI/bge-m3"
-    client.set_model(BGE_M3_MODEL) # for dense vectors
-    client.set_sparse_model(BGE_M3_MODEL) # for sparse vectors
+    # initiating both model components separately
+    # FastEmbed library downloads the weights once to your machine (~/.fastembed/models/)
+    logging.info("Loading BGE-M3 localized computation workers...")
+    dense_model = TextEmbedding(model_name="BAAI/bge-large-en-v1.5")
+    sparse_model = SparseTextEmbedding(model_name="Qdrant/bm42-all-minilm-l6-v2-attentions")
     
     # loading chunks
     with open(chunks_path, "r", encoding="utf-8") as f:
@@ -51,14 +53,25 @@ def run_indexing_pipeline():
             "source_file": chunk["metadata"].get("source_file")
         }
         
+        ## Generating Vectors
+        # We wrap it in next() because .embed() outputs a generator
+        dense_vector = next(dense_model.embed([text_content])).tolist()
+        
+        # Convert fastembed's sparse format into the format Qdrant API expects
+        sparse_output = next(sparse_model.embed([text_content]))
+        sparse_vector = models.SparseVector(
+            indices=sparse_output.indices.tolist(),
+            values=sparse_output.values.tolist()
+        )
+
         # Document maps text to both dense and sparse vectors via underlying ONNX model
         points.append(
             models.PointStruct(
                 id=point_id,
                 payload=payload,
                 vector={
-                    "dense": models.Document(text=text_content, model=BGE_M3_MODEL),
-                    "sparse": models.Document(text=text_content, model=BGE_M3_MODEL)
+                    "dense": dense_vector,
+                    "sparse": sparse_vector
                 }
             )
         )
@@ -77,3 +90,4 @@ def run_indexing_pipeline():
 
 if __name__ == "__main__":
     run_indexing_pipeline()
+    # print(SparseTextEmbedding.list_supported_models())

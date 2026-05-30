@@ -27,7 +27,7 @@ def initialize_production_schema():
         # Config 1: Dense Semantic Space 
         vectors_config={
             "dense": models.VectorParams(
-                size=1024, # since BGE-M3 outputs 1024 dimension vectors
+                size=1024, # since "BAAI/bge-large-en-v1.5" outputs 1024 dimension vectors
                 distance=models.Distance.COSINE # using cosine similarity 
             )
         },
