@@ -12,6 +12,7 @@
 3. **Use Qdrant Cloud (free & paid tier available)**
     - Point Google Colab to the cloud
     - Peform indexing in colab and store dB in cloud
+    - need to use env-variable to set `http://localhost:6333` as url in colab 
 
 
 
