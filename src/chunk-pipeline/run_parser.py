@@ -13,10 +13,10 @@ logging.basicConfig(
 # Update these when new releases drop — they get embedded into every chunk
 # so filtered retrieval ("show me langgraph 0.3.x docs") stays accurate.
 FRAMEWORK_VERSIONS = {
-    "langchain":  "0.3.x",
-    "langgraph":  "0.3.x",
-    "langsmith":  "0.8.x",
-    "deepagents": "0.1.x",  # included in oss/ — index or exclude as needed
+    "langchain":  "1.3.2",
+    "langgraph":  "1.2.2",
+    "langsmith":  "0.5.1",
+    "deepagents": "0.6.7",  # included in oss/ — index or exclude as needed
 }
 
 # ── Files to skip (exact filename match, lowercased) ─────────────────────────

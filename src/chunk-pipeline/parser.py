@@ -215,13 +215,16 @@ class DocumentParser:
           6. For each section → create parent chunk + child chunks
         """
         raw_content = self._read_file()
-        file_base = os.path.basename(self.file_path).replace(".", "_")
-        global_doc_id = f"{self.framework}_{file_base}"
+        # file_base = os.path.basename(self.file_path).replace(".", "_")
+        # global_doc_id = f"{self.framework}_{file_base}"
+        rel_path = os.path.relpath(self.file_path).replace("\\", "/")
+        file_slug = re.sub(r"[^a-zA-Z0-9]", "_", rel_path).strip("_")
+        global_doc_id = f"{self.framework}_{file_slug}"
 
         # ── Step 1: Front matter ─────────────────────────────────────────
         front_matter, content = self.parse_yaml_front_matter(raw_content)
-        doc_title = (front_matter.get("title") or front_matter.get("sidebarTitle")
-            or file_base.replace("_md", "").replace("_mdx", "").replace("_", " ").title()) # take tile from either front matter "title"/"sidebarTitle" (or) file location
+        doc_title = (front_matter.get("title") or front_matter.get("sidebarTitle") or 
+                     os.path.basename(self.file_path).replace(".", "_").replace("_md", "").replace("_mdx", "").replace("_", " ").title()) # take tile from either front matter "title"/"sidebarTitle" (or) file location
 
         # ── Step 2: Clean MDX noise from the whole document ──────────────
         content = self._clean_mdx(content)
@@ -267,14 +270,14 @@ class DocumentParser:
             ))
 
         # ── Step 5: Process each ## section ──────────────────────────────
-        for i in range(1, len(sections), 2):
+        for section_num, i in enumerate(range(1, len(sections), 2)):
             header_line = sections[i]
             section_body = sections[i + 1] if (i + 1) < len(sections) else ""
 
             header = header_line.replace("##", "").strip()
             heading_slug = re.sub(r"[^a-zA-Z0-9]", "_", header.lower())
             heading_slug = re.sub(r"_+", "_", heading_slug).strip("_")
-            parent_id = f"{global_doc_id}_{heading_slug}"
+            parent_id = f"{global_doc_id}_{heading_slug}_{section_num}"
 
             sub_headings = re.findall(r"###\s+([^\n]+)", section_body)
 
