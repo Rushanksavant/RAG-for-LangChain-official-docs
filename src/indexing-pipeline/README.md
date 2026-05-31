@@ -54,31 +54,18 @@ docker compose down
 ### <ins>2. Run Qdrant inside Google Colab</ins>
 
 **Colab VM**
-    |
-    ├── pip install qdrant-client fastembed
-    |
-    ├── wget qdrant binary + run it locally inside Colab
-    |
-    ├── run init_vectordB.py  (creates collections inside Colab's Qdrant)
-    |
-    ├── run index_chunks.py   (embeds 27K chunks, uploads to Colab's Qdrant)
-    |
-    ├── zip /qdrant_storage/
-    |
-    └── download to your machine → unzip into data/qdrant_dB/
+-  pip install qdrant-client fastembed
+- wget qdrant binary + run it locally inside Colab
+-  run init_vectordB.py  (creates collections inside Colab's Qdrant)
+- run index_chunks.py   (embeds 27K chunks, uploads to Colab's Qdrant)
+-  zip /qdrant_storage/
+- download to your machine → unzip into data/qdrant_dB/
 
 **Your machine**
-    |
-    └── docker compose up -d  (Qdrant reads the pre-built storage → instant, no re-indexing)
+- docker compose up -d  (Qdrant reads the pre-built storage → instant, no re-indexing)
 
 **The key insights:**
 
 - Qdrant storage is just files. 
 - Whatever Qdrant writes during indexing on Colab, you copy those files to your local volume mount and Docker picks them up as-is. 
 - Zero re-indexing/processing needed locally.
-
-**Start qdrant engine** in docker container and you can run retrieval pipeline.
-```bash
-cd docker 
-docker compose up -d
-```
