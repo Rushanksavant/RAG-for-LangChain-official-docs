@@ -18,7 +18,7 @@
 ## Implementation of Option 1 and 2
 
 
-####  1. Run pipeline of local computer (CPU-intense operation)
+###  <ins>1. Run pipeline of local computer (CPU-intense operation)</ins>
 
 **Docker commands should be runned while keeping terminal in docker folder (or where dockerfile/docker-compose lives)**
 
@@ -51,7 +51,7 @@ docker compose down
 ```
 
 
-#### 2. Run Qdrant inside Google Colab
+### <ins>2. Run Qdrant inside Google Colab</ins>
 
 **Colab VM**
     |
