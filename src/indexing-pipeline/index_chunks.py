@@ -8,8 +8,8 @@ from fastembed import TextEmbedding, SparseTextEmbedding
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-CHILDREN_COLLECTION = "documentation_chunks"
-PARENTS_COLLECTION  = "documentation_parents"
+CHILDREN_COLLECTION = "documentation_child_chunks"
+PARENTS_COLLECTION  = "documentation_parent_chunks"
 CHUNKS_PATH         = "data/processed/chunks.json"
 EMBED_BATCH_SIZE    = 64   # texts sent to embedding model at once
 UPLOAD_BATCH_SIZE   = 64   # points uploaded to Qdrant at once
