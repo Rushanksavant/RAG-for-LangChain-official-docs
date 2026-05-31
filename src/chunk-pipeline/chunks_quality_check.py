@@ -13,6 +13,12 @@ print(f"Total chunks:   {len(chunks)}")
 print(f"  Parents:      {len(parents)}")
 print(f"  Children:     {len(children)}")
 
+# Duplicate ids
+ids = [c["id"] for c in chunks]
+dupes = {id_: count for id_, count in Counter(ids).items() if count > 1}
+print(f"Unique IDs:     {len(set(ids))}")
+print(f"Duplicate IDs:  {len(dupes)}")  # must be 0
+
 # Framework breakdown
 fw = Counter(c["metadata"]["framework"] for c in children)
 print(f"\nChildren by framework: {dict(fw)}")
