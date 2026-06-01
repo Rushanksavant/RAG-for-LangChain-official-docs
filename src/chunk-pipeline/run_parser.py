@@ -2,6 +2,7 @@ import os
 import json
 import logging
 from parser import DocumentParser
+from helper import get_doc_repo_git_info
 
 logging.basicConfig(
     level=logging.INFO,
@@ -197,7 +198,16 @@ def run_pipeline() -> None:
     logging.info("────────────────────────────────────────────────")
 
     # ── Write outputs ────────────────────────────────────────────────────
-    chunks_path = os.path.join(processed_dir, "chunks.json")
+    # File naming based on git commit for repo-cloning id and date
+    # or chunks file formation date (if git commit extraction throws error)
+
+    # 1. Fetch the Git metadata from the raw docs folder
+    commit_date, commit_hash = get_doc_repo_git_info(target_docs_path)
+    # 2. Construct the dynamic filename
+    output_filename = f"chunks_{commit_hash}_{commit_date}.json" 
+
+    # chunks_path = os.path.join(processed_dir, "chunks.json")
+    chunks_path = os.path.join(processed_dir, output_filename)
     with open(chunks_path, "w", encoding="utf-8") as f:
         json.dump(all_chunks, f, indent=2, ensure_ascii=False)
     logging.info(f"Chunks written to: {chunks_path}")
