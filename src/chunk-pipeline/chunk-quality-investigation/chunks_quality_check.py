@@ -2,7 +2,7 @@ import json
 import os
 from collections import Counter
 
-with open("data/processed/chunks.json", "r", encoding="utf-8") as f:
+with open("data/processed/chunks_d27603b_20260529.json", "r", encoding="utf-8") as f:
     chunks = json.load(f)
 
 parents  = [c for c in chunks if c["type"] == "parent"]
@@ -41,7 +41,7 @@ print(f"  Avg:    {int(sum(lengths)/len(lengths))}")
 # Detailed child chunks character-size distribution
 
 children = [c for c in chunks if c["type"] == "child"]
-lengths = sorted([len(c["text"]) for c in children])
+lengths = sorted([len(c["text"]) for c in parents])
 
 buckets = [500, 1000, 2000, 4000, 8000, float("inf")]
 labels  = ["<500", "500-1k", "1k-2k", "2k-4k", "4k-8k", "8k+"]
