@@ -63,6 +63,7 @@ class DocumentParser:
         so that every parent and child chunk is already clean.
 
         What is removed:
+          - base64 embedded images — long binary data
           - MDX import/export statements at top of the file 
           - :::python / :::js  language-fence wrappers  (but NOT the code inside)
           - Mintlify JSX block component: 
@@ -82,6 +83,9 @@ class DocumentParser:
           - Heading lines (# / ## / ###)
           - Plain paragraphs
         """
+        # 0. Strip base64 embedded images — binary data, zero semantic value
+        content = re.sub(r'data:image/[^;]+;base64,[A-Za-z0-9+/=]+', '[image]', content)
+
         # 1. MDX import / export lines (comes first before other passes) e.g.  import { Foo } from "@/components/Foo"
         content = re.sub(r"^(?:import|export)\s+.*$", "", content, flags=re.MULTILINE)
 

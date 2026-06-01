@@ -28,11 +28,63 @@ cat = Counter(c["metadata"]["content_category"] for c in children)
 print(f"Children by category:  {dict(cat)}")
 
 # Text length distribution for children
+print("\n── Chunk sizes ──────────────────────────────")
+print("The dense & sparse embedding models we used have input limit of 512 tokens")
+print("512 tokens ~ 2,000 characters. Chunks having size beyond this will face truncation")
+print("leading to information loss.")
 lengths = [len(c["text"]) for c in children]
-print(f"\nChild text length:")
+print(f"Child chunk character length:")
 print(f"  Min:    {min(lengths)}")
 print(f"  Max:    {max(lengths)}")
 print(f"  Avg:    {int(sum(lengths)/len(lengths))}")
+
+# Detailed child chunks character-size distribution
+
+children = [c for c in chunks if c["type"] == "child"]
+lengths = sorted([len(c["text"]) for c in children])
+
+buckets = [500, 1000, 2000, 4000, 8000, float("inf")]
+labels  = ["<500", "500-1k", "1k-2k", "2k-4k", "4k-8k", "8k+"]
+counts  = [0] * len(labels)
+
+for l in lengths:
+    for i, b in enumerate(buckets):
+        if l < b:
+            counts[i] += 1
+            break
+
+total = len(children)
+for label, count in zip(labels, counts):
+    pct = count / total * 100
+    print(f"  {label:>8}:  {count:>5} chunks  ({pct:.1f}%)")
+
+# Chunk type wise size distribution
+children = [c for c in chunks if c["type"] == "child"]
+
+oversized = [c for c in children if len(c["text"]) > 1800]
+
+from collections import Counter
+cats = Counter(c["metadata"]["content_category"] for c in oversized)
+total = len(oversized)
+
+print(f"Oversized children (>1800 chars): {total}")
+print(f"\nBy category:")
+for cat, count in cats.most_common():
+    pct = count / total * 100
+    print(f"  {cat:>20}: {count:>4} chunks ({pct:.1f}%)")
+
+print(f"\nBreakdown by category AND size bucket:")
+buckets = [1800, 2500, 4000, 8000, float("inf")]
+labels  = ["1.8k-2.5k", "2.5k-4k", "4k-8k", "8k+"]
+for cat in ["descriptive_text", "code_snippet", "structured_table"]:
+    cat_chunks = [c for c in oversized if c["metadata"]["content_category"] == cat]
+    if not cat_chunks:
+        continue
+    print(f"\n  {cat}:")
+    for i, label in enumerate(labels):
+        count = sum(1 for c in cat_chunks if buckets[i] <= len(c["text"]) < buckets[i+1])
+        if count:
+            print(f"    {label}: {count}")
 
 # Sample: 2 parents + their children
 print("\n── Sample parent ──────────────────────────────")
