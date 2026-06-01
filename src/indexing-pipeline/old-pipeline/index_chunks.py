@@ -1,12 +1,9 @@
-
 import json
 import os
 import uuid
 import logging
 from qdrant_client import QdrantClient, models
-import torch # to check if gpu is available
-# from fastembed import TextEmbedding, SparseTextEmbedding # for old pipeline
-from FlagEmbedding import BGEM3FlagModel # current pipeline uses BGE's proprietary capabilities (lexical and multi-vector retrieval) (provided by FlagEmbedding)
+from fastembed import TextEmbedding, SparseTextEmbedding
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -32,7 +29,9 @@ def batch(iterable: list, size: int):
 
 
 # ── Batch Indexing of Child Chunks ────────────────────────────────────────────
-def index_children(client: QdrantClient, child_chunks: list, bge_model: BGEM3FlagModel) -> None:
+def index_children(client: QdrantClient, child_chunks: list, 
+                   dense_model: TextEmbedding, sparse_model: SparseTextEmbedding,
+                    ) -> None:
     """
     Embed and upload all child chunks to documentation_chunks.
 
@@ -50,29 +49,28 @@ def index_children(client: QdrantClient, child_chunks: list, bge_model: BGEM3Fla
         texts = [c["text"] for c in chunk_batch]
 
         # 2. Batch embed — FastEmbed processes the whole list in one ONNX forward pass
-        embeddings = bge_model.encode(texts, return_dense=True, return_sparse=True)
-        dense_vectors = embeddings['dense_vecs']
-        sparse_vectors = embeddings['lexical_weights'] # List of dicts e.g., [{'123': 0.15, '456': 0.8}, ...]
+        dense_vectors  = list(dense_model.embed(texts))   # list of np.ndarray (1024,)
+        sparse_vectors = list(sparse_model.embed(texts))  # list of SparseEmbedding
 
         # 3. Batch Points creation 
         points = []
-        for chunk, dv, sv in zip(chunk_batch, dense_vectors, sparse_vectors):
-            
-            # Convert BGE-M3 lexical dictionary to Qdrant integer indices and float values
-            indices = [int(token_id) for token_id in sv.keys()]
-            values = [float(weight) for weight in sv.values()]
-
+        for chunk, dv, sv in zip(chunk_batch, dense_vectors, sparse_vectors): # Loop for entire batch
             points.append(
                 models.PointStruct(
                     id=deterministic_uuid(chunk["id"]),
-                    vector={"dense": dv.tolist(), "sparse": models.SparseVector(indices=indices, values=values)},
-                    payload={"chunk_id":         chunk["id"],
-                            "text":             chunk["text"],
-                            "parent_id":        chunk["metadata"].get("parent_id"),
-                            "framework":        chunk["metadata"].get("framework"),
-                            "content_category": chunk["metadata"].get("content_category"),
-                            "breadcrumbs":      chunk["metadata"].get("breadcrumbs"),
-                            "source_file":      chunk["metadata"].get("source_file")}))
+
+                    vector={"dense": dv.tolist(),
+                            "sparse": models.SparseVector(indices=sv.indices.tolist(), values=sv.values.tolist())},
+
+                    payload={ # meta-data mapping
+                        "chunk_id":         chunk["id"],
+                        "text":             chunk["text"],
+                        "parent_id":        chunk["metadata"].get("parent_id"),
+                        "framework":        chunk["metadata"].get("framework"),
+                        "content_category": chunk["metadata"].get("content_category"),
+                        "breadcrumbs":      chunk["metadata"].get("breadcrumbs"),
+                        "source_file":      chunk["metadata"].get("source_file")}
+                    ))
 
         # 4. Batch Points Upload to Qdrant dB 
         client.upload_points(collection_name=CHILDREN_COLLECTION, points=points)
@@ -83,7 +81,7 @@ def index_children(client: QdrantClient, child_chunks: list, bge_model: BGEM3Fla
 
 
 # ── Batch Indexing of Parent Chunks ──────────────────────────────────────────
-def index_parents(client: QdrantClient, parent_chunks: list, bge_model: BGEM3FlagModel) -> None:
+def index_parents(client: QdrantClient, parent_chunks: list, dense_model: TextEmbedding) -> None:
     """
     Embed and upload all parent chunks to documentation_parents collection.
 
@@ -104,9 +102,8 @@ def index_parents(client: QdrantClient, parent_chunks: list, bge_model: BGEM3Fla
         # 1. Texts of all chunks in the batch
         texts = [c["text"] for c in chunk_batch]
 
-        # 2. Batch embed — dense vectors
-        embeddings = bge_model.encode(texts, return_dense=True, return_sparse=False)
-        dense_vectors = embeddings['dense_vecs']
+        # 2. Batch embed — FastEmbed processes the whole list in one ONNX forward pass
+        dense_vectors = list(dense_model.embed(texts))
 
         # 3. Batch Points creation 
         points = []
@@ -143,13 +140,12 @@ def run_indexing_pipeline() -> None:
     client = QdrantClient(url="http://localhost:6333")
 
     # ── Load models ───────────────────────────────────────────────────────────
-    # Using BGE-M3 
-    # Dynamically handle FP16 depending on available hardware environment
-    is_cuda = torch.cuda.is_available()
-    logging.info(f"Loading unified BGE-M3 model (Dense + Sparse). Using GPU acceleration: {is_cuda}")
-    logging.info("Loading unified BGE-M3 model (Dense + Sparse)")
-    # use_fp16=True speeds up inference on GPUs without losing quality
-    bge_model = BGEM3FlagModel('BAAI/bge-m3', use_fp16=is_cuda)
+    # FastEmbed downloads weights once to ~/.cache/fastembed/
+    logging.info("Loading dense model  : BAAI/bge-large-en-v1.5")
+    dense_model = TextEmbedding(model_name="BAAI/bge-large-en-v1.5")
+
+    logging.info("Loading sparse model : Qdrant/bm42-all-minilm-l6-v2-attentions")
+    sparse_model = SparseTextEmbedding(model_name="Qdrant/bm42-all-minilm-l6-v2-attentions")
 
     # ── Load chunks ───────────────────────────────────────────────────────────
     with open(CHUNKS_PATH, "r", encoding="utf-8") as f:
@@ -161,12 +157,12 @@ def run_indexing_pipeline() -> None:
 
     # ── Perform Indexing ──────────────────────────────────────────────────────
     # Entire data indexing
-    # index_children(client, child_chunks, bge_model)
-    # index_parents(client, parent_chunks, bge_model)
+    index_children(client, child_chunks, dense_model, sparse_model)
+    index_parents(client, parent_chunks, dense_model)
 
     # Testing indexing on slices of data
-    index_children(client, child_chunks[:100], bge_model)
-    index_parents(client, parent_chunks[:50], bge_model)
+    # index_children(client, child_chunks[:100], dense_model, sparse_model)
+    # index_parents(client, parent_chunks[:50], dense_model)
 
     logging.info("🎉 Indexing pipeline complete. Both collections populated.")
 

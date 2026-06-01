@@ -8,18 +8,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 CHILDREN_COLLECTION = "documentation_child_chunks"   # hybrid dense+sparse, 18K child chunks
 PARENTS_COLLECTION  = "documentation_parent_chunks"  # dense-only, 8.5K parent chunks
 
-DENSE_DIM = 1024  # BAAI/bge-m3 output dimension. Note: sparse embedding models generate variable sized output vectors
+DENSE_DIM = 1024  # BAAI/bge-large-en-v1.5 output dimension. Note: sparse embedding models generate variable sized output vectors
 
 
 def _create_children_collection(client: QdrantClient) -> None:
     """
-    OLD Hybrid collection for child chunks.
+    Hybrid collection for child chunks.
       - dense  : BGE-large-en-v1.5 (1024d, cosine) — semantic similarity search
       - sparse : BM42 attentions — keyword / code-token matching
-
-    NEW Hybrid collection for child chunks.
-      - dense  : BAAI/bge-m3 (1024d, cosine) — semantic similarity search
-      - sparse : BAAI/bge-m3 lexical weights — keyword expansion & syntax matching
 
     Payload indexes enable fast filtered search without full collection scans:
       - framework        (keyword) : filter by langchain / langgraph / langsmith / deepagents

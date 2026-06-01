@@ -6,5 +6,6 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastembed>=0.8.0",
+    "flagembedding>=1.4.0",
     "qdrant-client>=1.18.0",
 ]
