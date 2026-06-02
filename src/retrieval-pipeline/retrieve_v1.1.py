@@ -1,6 +1,3 @@
-# ==============================================================================
-# CRITICAL ENVIRONMENT SHIELDS (Must be placed before any imports)
-# ==============================================================================
 import os
 import sys
 
@@ -66,7 +63,7 @@ class RetrievalPipeline:
             self.bge_model = BGEM3FlagModel(
                 'BAAI/bge-m3', 
                 use_fp16=is_cuda,
-                devices=target_device # Explicitly locks device execution
+                device=target_device # FIXED: Changed from 'devices' to 'device'
             )
             print("✅ STAGE 1 COMPLETE: BGE-M3 loaded into memory.")
         except Exception as e:
@@ -166,11 +163,12 @@ class RetrievalPipeline:
         
         # Re-assemble structural data with their context scores
         final_results = []
-        for i, res in enumerate(rerank_results):
+        # Safe 1-to-1 zip mapping of the original documents and their corresponding reranker scores
+        for doc, res in zip(parent_documents, rerank_results):
             score = res.score if hasattr(res, "score") else float(res)
             final_results.append({
-                "parent_id": parent_documents[i]["id"],
-                "text": parent_documents[i]["text"],
+                "parent_id": doc["id"],
+                "text": doc["text"],
                 "relevance_score": score
             })
             
