@@ -31,7 +31,8 @@ print(f"  -> CUDA Available: {torch.cuda.is_available()}")
 print("Importing FlagEmbedding modules...")
 try:
     from FlagEmbedding import BGEM3FlagModel
-    from fastembed.rerank.cross_encoder import TextCrossEncoder
+    # from FlagEmbedding import FlagReranker # uses pytorch, execution is a bit slower on cpu
+    from fastembed.rerank.cross_encoder import TextCrossEncoder # uses ONNX runtime rather than pytorch, faster execution with lower RAM consumption
     print("✅ FlagEmbedding libraries imported successfully.")
 except Exception as e:
     print(f"❌ Failed to import libraries: {e}")
@@ -72,6 +73,7 @@ class RetrievalPipeline:
             sys.exit(1)
 
         print("\nSTAGE 2: Loading Cross-Encoder Reranker...")
+        # self.reranker = FlagReranker('BAAI/bge-reranker-base', use_fp16=is_cuda)
         self.reranker = TextCrossEncoder(model_name="BAAI/bge-reranker-base")
         print("✅ STAGE 2 COMPLETE: Reranker operational.")
         
@@ -89,24 +91,20 @@ class RetrievalPipeline:
         dense_vector = embeddings['dense_vecs'][0].tolist()
         sparse_dict = embeddings['lexical_weights'][0]
         
-        # Map BGE-M3 sparse dictionary keys to safe, deduplicated integer IDs for Qdrant
-        idx_to_weight = {}
-        for token_id_str, weight in sparse_dict.items():
-            token_id = int(token_id_str)
-            idx_to_weight[token_id] = idx_to_weight.get(token_id, 0.0) + float(weight)
-            
+        # Preparing sparse vectors for keyword-search 
         qdrant_sparse = models.SparseVector(
-            indices=list(idx_to_weight.keys()),
-            values=list(idx_to_weight.values())
-        )
+        indices=[int(k) for k in sparse_dict.keys()],
+        values=[float(v) for v in sparse_dict.values()])
         
         # Step 2: Execute Hybrid Search (Dense + Sparse combined via RRF)
+        prefetch_limit = top_k_child * 2  # 15*2 candidates for RRF to work with.
+
         logging.info(f"Executing hybrid search in Qdrant (fetching top {top_k_child} child chunks)...")
         search_results = self.qdrant_client.query_points(
             collection_name=CHILDREN_COLLECTION,
             prefetch=[
-                models.Prefetch(query=dense_vector, using="dense", limit=top_k_child),
-                models.Prefetch(query=qdrant_sparse, using="sparse", limit=top_k_child),
+                models.Prefetch(query=dense_vector, using="dense", limit= prefetch_limit),
+                models.Prefetch(query=qdrant_sparse, using="sparse", limit= prefetch_limit)
             ],
             query=models.FusionQuery(fusion=models.Fusion.RRF),
             limit=top_k_child,
@@ -159,13 +157,14 @@ class RetrievalPipeline:
         logging.info("Passing parent text records to Cross-Encoder Reranker...")
         texts_to_rerank = [doc["text"] for doc in parent_documents]
         
-        rerank_results = list(self.reranker.rerank(query=query_text, documents=texts_to_rerank))
+        rerank_results = list(self.reranker.rerank(query=query_text, documents=texts_to_rerank)) ## this returns 
+        # print(rerank_results)
         
         # Re-assemble structural data with their context scores
         final_results = []
         # Safe 1-to-1 zip mapping of the original documents and their corresponding reranker scores
         for doc, res in zip(parent_documents, rerank_results):
-            score = res.score if hasattr(res, "score") else float(res)
+            score = float(res)
             final_results.append({
                 "parent_id": doc["id"],
                 "text": doc["text"],
