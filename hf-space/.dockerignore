@@ -26,3 +26,6 @@ Thumbs.db
 src/
 Qdrant-migration/
 docker/
+
+# Ignore Readme.md
+README.md

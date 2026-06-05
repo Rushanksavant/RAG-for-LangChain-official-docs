@@ -34,4 +34,6 @@ git commit -m "chore: setup automated CI/CD for remote MCP server"
 git push origin main
 ```
 
+- Go-to HF-space page --> Settings --> Variables and secrets | Add the MCP_SECRET_KEY as new secret
+
 Alternative to this was using Git Subtree (Manual Command Line), initializing git remote for hf-face repo and pushing all changes manually to hf-face repo.

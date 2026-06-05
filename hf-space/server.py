@@ -165,7 +165,7 @@ async def health_check():
 # It creates two hidden endpoints for us automatically:
 # 1. GET /mcp/sse (Where the client establishes the streaming connection)
 # 2. POST /mcp/messages (Where the client actually sends tool execution commands)
-app.mount("/mcp", mcp_asgi_app)
+app.mount("/", mcp_asgi_app)
 
 
 # ── Local dev entrypoint ──────────────────────────────────────────────────────
