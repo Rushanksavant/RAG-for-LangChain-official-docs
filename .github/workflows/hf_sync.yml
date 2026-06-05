@@ -1,0 +1,48 @@
+name: Deploy MCP Server to Hugging Face Spaces
+
+on:
+  push:
+    branches:
+      - rag_pipeline_v2 # Branch on which we need to activate CI/CD pipeline
+    paths:
+      - 'hf-space/**' # Only triggers if files inside your hf-space folder change
+
+jobs:
+  deploy-to-hf:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git Config
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync Subdirectory to Hugging Face Spaces
+        env:
+          HF_TOKEN_WRITE: ${{ secrets.HF_TOKEN_WRITE }}
+          # REPLACE THESE TWO VARIABLES WITH YOUR ACTUAL ACCOUNT DETAILS:
+          HF_USERNAME: 'Rushank'
+          HF_SPACE_NAME: 'langchain-rag-mcp-server'
+        run: |
+          # 1. Clone the target Hugging Face Space repository cleanly into a temporary folder
+          git clone https://$HF_USERNAME:$HF_TOKEN_WRITE@huggingface.co/spaces/$HF_USERNAME/$HF_SPACE_NAME hf_space_target
+
+          # 2. Sync all contents from your local hf-space/ folder directly into the target clone
+          # (Using rsync keeps files identical and deletes anything removed locally)
+          rsync -av --delete hf-space/ hf_space_target/ --exclude .git
+
+          # 3. Enter the target directory, stage changes, commit and force push
+          cd hf_space_target
+          git add .
+
+          # Check if there are actual changes to prevent empty commit errors failing the build
+          if git diff-index --quiet HEAD; then
+            echo "No changes detected. Skipping deployment."
+          else
+            git commit -m "Automated deployment from GitHub Actions (Commit: ${{ github.sha }})"
+            git push origin main --force
+          fi
