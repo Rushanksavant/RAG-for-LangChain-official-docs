@@ -2,7 +2,8 @@ FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    HOME=/home/mcpuser
+    HOME=/home/mcpuser \
+    HF_HOME=/home/mcpuser/.cache/huggingface
 
 # Create non-root user — required by HF Spaces security policy
 RUN useradd -m -u 1000 mcpuser
