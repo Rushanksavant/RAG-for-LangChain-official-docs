@@ -16,7 +16,7 @@ __pycache__/
 # Ignore git data and testing tools
 .git
 .github
-test.py
+mcp_server_test.py
 
 # Ignore local system clutter
 .DS_Store
