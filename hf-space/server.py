@@ -40,7 +40,7 @@ _active_connections: int = 0
 
 
 # ── MCP server definition ─────────────────────────────────────────────────────
-# stateless_http=True: each request is independent, no session state maintained.
+# stateless_http=True: each request is independent, no session state maintained. needs to be False
 # Required for HF Spaces where requests may hit different uvicorn workers.
 mcp = FastMCP("LangChain-RAG-Retrieval")
 
@@ -72,7 +72,7 @@ async def retrieve_context(query: str, top_k: int = 5) -> str:
 # path="/mcp" means the MCP protocol endpoint lives at /mcp on the outer app.
 # We pass lifespan to FastAPI so FastMCP's session manager initialises correctly.
 # This is critical for streamable-http — without it, sessions silently fail.
-mcp_asgi_app = mcp.http_app(path="/", stateless_http=True)
+mcp_asgi_app = mcp.http_app(path="/", stateless_http=False)
 
 
 # ── FastAPI wrapper ───────────────────────────────────────────────────────────
