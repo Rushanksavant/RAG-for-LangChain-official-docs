@@ -2,7 +2,7 @@
 title: LangChain RAG MCP Server
 emoji: 🚀
 colorFrom: green
-colorTo: white
+colorTo: grey
 sdk: docker
 app_port: 7860
 ---
