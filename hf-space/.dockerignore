@@ -1,0 +1,28 @@
+##### Since we are integrating hf-space folder in existing git-repo #####
+
+# Ignore local python environments and caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Ignore sensitive credentials
+.env
+*.env
+
+# Ignore git data and testing tools
+.git
+.github
+test.py
+
+# Ignore local system clutter
+.DS_Store
+Thumbs.db
+
+# Ignore other pipelines
+src/
+Qdrant-migration/
+docker/
