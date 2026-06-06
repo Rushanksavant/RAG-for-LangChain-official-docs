@@ -1,25 +1,19 @@
 """
 MCP Server — Production entry point.
 
-Exposes a single MCP tool: retrieve_context (dummy for now, retrieval logic added later).
-Deployed on HF Spaces behind a FastAPI wrapper that handles:
-  - Auth via X-API-Key header
-  - Health/probe endpoints that bypass auth (required by HF Spaces proxy)
-  - Active connection tracking
+Exposes a single MCP tool: retrieve_context (dummy for now).
+Retrieval pipeline integrated in next phase.
 
-MCP endpoint: POST /mcp
-Health endpoint: GET /health
-Root probe:    GET /
+MCP endpoint:    POST /mcp   (handled by FastMCP mounted at /)
+Health endpoint: GET  /health
 """
 
 import os
-import uuid
 import logging
-import asyncio
-from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastmcp import FastMCP
 from dotenv import load_dotenv
 
@@ -31,12 +25,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("mcp_server")
 
-
-# ── Active connection tracking ────────────────────────────────────────────────
 _active_connections: int = 0
 
-
-# ── MCP server definition ─────────────────────────────────────────────────────
+# ── MCP definition ────────────────────────────────────────────────────────────
 mcp = FastMCP("LangChain-RAG-Retrieval")
 
 
@@ -44,6 +35,16 @@ mcp = FastMCP("LangChain-RAG-Retrieval")
 async def retrieve_context(query: str, top_k: int = 5) -> str:
     """
     Retrieves the most relevant LangChain documentation context for a given query.
+
+    Uses hybrid dense+sparse search over Qdrant Cloud, fetches parent chunks
+    for full context, and applies cross-encoder reranking.
+
+    Args:
+        query: The user's question or search query
+        top_k:  Number of top parent chunks to return after reranking (default 5)
+
+    Returns:
+        JSON string containing ranked documentation chunks with relevance scores
     """
     logger.info(f"retrieve_context called: query='{query}', top_k={top_k}")
     return (
@@ -52,82 +53,45 @@ async def retrieve_context(query: str, top_k: int = 5) -> str:
     )
 
 
-# Keep path="/mcp" so FastMCP expects /mcp/sse and /mcp/messages internally
-mcp_asgi_app = mcp.http_app(
-    path="/mcp", 
-    transport="streamable-http", 
-    stateless_http=False
-)
+# ── MCP ASGI sub-app ──────────────────────────────────────────────────────────
+mcp_app = mcp.http_app(path="/mcp")
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    async with mcp_asgi_app.lifespan(mcp_asgi_app):
-        logger.info("MCP session manager initialised.")
-        yield
-    logger.info("MCP session manager shut down.")
-
-
+# ── FastAPI wrapper ───────────────────────────────────────────────────────────
+# lifespan=mcp_app.lifespan shares FastMCP's session manager lifecycle
+# with FastAPI. Required for streamable-http — without this, the session
+# manager never initialises and every request returns "Session terminated".
 app = FastAPI(
     title="LangChain RAG — Remote MCP Server",
-    lifespan=lifespan,
-    redirect_slashes=False
+    lifespan=mcp_app.lifespan,
+    redirect_slashes=False,
 )
 
 
-# ── FIX: Pure ASGI Middleware to prevent streaming / SSE buffering chokes ─────
-class ASGIAuthMiddleware:
-    def __init__(self, app):
-        self.app = app
+# ── Auth middleware ───────────────────────────────────────────────────────────
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    global _active_connections
 
-    async def __call__(self, scope, receive, send):
-        global _active_connections
+    # HF Spaces health probes bypass auth — they don't send API keys.
+    if request.url.path in ["/health"]:
+        return await call_next(request)
 
-        # Pass through non-HTTP protocols (e.g., lifespans, websockets if any)
-        if scope["type"] != "http":
-            return await self.app(scope, receive, send)
+    expected_key = os.environ.get("MCP_SECRET_KEY")
+    provided_key = request.headers.get("X-API-Key")
 
-        path = scope.get("path", "")
-        # Always bypass auth for the root probe and health check endpoints
-        if path in ["/", "/health"]:
-            return await self.app(scope, receive, send)
+    if not expected_key:
+        logger.critical("MCP_SECRET_KEY is not set.")
+        return JSONResponse(status_code=401, content={"error": "Server auth not configured."})
 
-        # Extract incoming headers (ASGI normalizes header keys to lowercase bytes)
-        headers = dict(scope.get("headers", []))
-        provided_key = headers.get(b"x-api-key", b"").decode("utf-8")
-        expected_key = os.environ.get("MCP_SECRET_KEY")
+    if provided_key != expected_key:
+        logger.warning(f"Unauthorized: {request.url.path}")
+        return JSONResponse(status_code=401, content={"error": "Unauthorized: Invalid X-API-Key."})
 
-        if not expected_key:
-            logger.error("MCP_SECRET_KEY environment variable is missing on server.")
-            await self._send_json_error(send, 500, b'{"error": "Server misconfigured."}')
-            return
-
-        if provided_key != expected_key:
-            logger.warning(f"Unauthorized request blocked for path: {path}")
-            await self._send_json_error(send, 401, b'{"error": "Unauthorized."}')
-            return
-
-        # Safely track concurrent connections
-        _active_connections += 1
-        try:
-            await self.app(scope, receive, send)
-        finally:
-            _active_connections -= 1
-
-    async def _send_json_error(self, send, status_code: int, body: bytes):
-        await send({
-            "type": "http.response.start",
-            "status": status_code,
-            "headers": [(b"content-type", b"application/json")]
-        })
-        await send({
-            "type": "http.response.body",
-            "body": body,
-            "more_body": False
-        })
-
-
-app.add_middleware(ASGIAuthMiddleware)
+    _active_connections += 1
+    try:
+        return await call_next(request)
+    finally:
+        _active_connections -= 1
 
 
 # ── Health + probe endpoints ──────────────────────────────────────────────────
@@ -141,9 +105,9 @@ async def health_check():
     return {"status": "healthy", "active_connections": _active_connections}
 
 
-# ── FIX: Mount to root so path prefixes remain intact for FastMCP ─────────────
-app.mount("/", mcp_asgi_app)
+# ── Mount MCP ─────────────────────────────────────────────────────────────────
+app.mount("/", mcp_app)
 
 
 if __name__ == "__main__":
-    uvicorn.run("server:app", host="0.0.0.0", port=7860)
+    uvicorn.run("server:app", host="0.0.0.0", port=7860, reload=False)
