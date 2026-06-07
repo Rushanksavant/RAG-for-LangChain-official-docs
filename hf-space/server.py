@@ -35,7 +35,7 @@ _active_connections: int = 0
 # HF Spaces free tier sleeps after 15 minutes of inactivity.
 # Pinging /health every 10 minutes keeps the space awake.
 # Uses localhost — zero network cost, bypasses auth middleware.
-_KEEP_ALIVE_INTERVAL_SECONDS = 1 * 60  # 10 minutes
+_KEEP_ALIVE_INTERVAL_SECONDS = 10 * 60  # 10 minutes
 _KEEP_ALIVE_URL = "http://localhost:7860/health"
 
 
@@ -137,6 +137,22 @@ app = FastAPI(
     lifespan=lifespan,          # composed lifespan, not mcp_app.lifespan directly
     redirect_slashes=False,
 )
+
+
+@app.middleware("http")
+async def strip_trailing_slash(request: Request, call_next):
+    """
+    HF Spaces' NGINX proxy appends a trailing slash to some paths (e.g.
+    /mcp → /mcp/). fastmcp 2.9.2 returns 400 on /mcp/ because it only
+    registers the exact path /mcp. Strip the trailing slash before the
+    request reaches fastmcp. Exclude root "/" to avoid infinite redirect.
+    """
+    if request.url.path != "/" and request.url.path.endswith("/"):
+        stripped = request.url.path.rstrip("/")
+        scope = dict(request.scope)
+        scope["path"] = stripped
+        request = Request(scope, request.receive, request._send)
+    return await call_next(request)
 
 
 @app.middleware("http")
