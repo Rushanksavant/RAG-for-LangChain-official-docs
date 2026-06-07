@@ -58,11 +58,20 @@ def _get_qdrant() -> QdrantClient:
 # ── Reranker ──────────────────────────────────────────────────────────────────
 def _rerank_with_api(query: str, documents: list, max_retries: int = 6) -> list | None:
     hf_token = os.environ.get("HF_API_KEY", "")
-    headers  = {"Authorization": f"Bearer {hf_token}"} if hf_token else {}
-    api_url  = "https://api-inference.huggingface.co/models/BAAI/bge-reranker-v2-m3"
+    headers  = {
+        "Authorization": f"Bearer {hf_token}",
+        "Content-Type": "application/json",
+    }
+
+    # api-inference.huggingface.co was deprecated and decommissioned.
+    # New endpoint: router.huggingface.co/hf-inference
+    # New payload format: {"query": str, "texts": [str, ...]}
+    # Response format: [{"index": int, "score": float}, ...]  sorted by index
+    api_url = "https://router.huggingface.co/hf-inference/models/BAAI/bge-reranker-v2-m3/v1/rerank"
 
     payload = {
-        "inputs": [{"text": query, "text_pair": doc} for doc in documents]
+        "query": query,
+        "texts": documents,
     }
 
     for attempt in range(1, max_retries + 1):
@@ -79,24 +88,22 @@ def _rerank_with_api(query: str, documents: list, max_retries: int = 6) -> list 
                 continue
             elif response.status_code != 200:
                 if attempt == max_retries:
-                    logger.error(f"HF API failed after {max_retries} attempts: {response.status_code}")
+                    logger.error(f"HF API failed after {max_retries} attempts: {response.status_code} {response.text}")
                     return None
                 time.sleep(attempt * 2)
                 continue
 
             data = response.json()
-            if isinstance(data, list) and isinstance(data[0], dict):
-                return [item["score"] for item in data]
-            elif isinstance(data, list) and isinstance(data[0], list):
-                return [item[0]["score"] for item in data]
-            else:
-                return [float(s) for s in data]
+            # Response: [{"index": 0, "score": 0.92}, {"index": 1, "score": 0.45}, ...]
+            # Sorted by score descending by the API — we need scores in original
+            # document order so zip(documents, scores) aligns correctly.
+            scores_by_index = {item["index"]: item["score"] for item in data}
+            return [scores_by_index[i] for i in range(len(documents))]
 
         except requests.exceptions.ConnectionError as ce:
-            # If DNS or connection completely fails locally or in prod, don't stall
             logger.error(f"Fatal connection/DNS error to HF Reranker: {ce}")
             return None  # Triggers instant fallback to RRF ordering
-        
+
         except Exception as e:
             logger.warning(f"Reranker attempt {attempt} failed: {e}")
             if attempt == max_retries:
@@ -225,22 +232,16 @@ async def execute_retrieval(
 
     # Assemble and sort by reranker score
     ranked = sorted(
-        [
-            {
-                "parent_id":       doc["id"],
-                "text":            doc["text"],
-                "relevance_score": float(score),
-                "source":          "reranker",
-            }
-            for doc, score in zip(parent_documents, scores)
-        ],
-        key=lambda x: x["relevance_score"],
-        reverse=True,
-    )[:top_k_parent]
+        [{
+        "parent_id":       doc["id"],
+        "text":            doc["text"],
+        "relevance_score": float(score),
+        "source":          "reranker"}
+            for doc, score in zip(parent_documents, scores)],
+        key=lambda x: x["relevance_score"], reverse=True
+        )[:top_k_parent]
 
-    await log_callback(
-        f"Step 5/5: Reranking complete. "
-        f"Top score: {ranked[0]['relevance_score']:.4f}"
-    )
+    await log_callback(f"Step 5/5: Reranking complete. "
+                    f"Top score: {ranked[0]['relevance_score']:.4f}")
 
     return json.dumps(ranked, ensure_ascii=False)
