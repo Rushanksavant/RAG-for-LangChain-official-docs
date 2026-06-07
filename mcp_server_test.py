@@ -74,7 +74,9 @@ async def run_test():
     print("[2/4] Invoking retrieve_context (basic call)...")
     retrieve_tool = next(t for t in tools if t.name == "retrieve_context")
     result = await retrieve_tool.ainvoke(
-        {"query": "How do I create a custom tool in LangChain?", "top_k": 3}
+        {"query": "What are the types of PII middleware provided by Langchain?", 
+         "top_k_child": 3, 
+         "top_k_parent": 3}
     )
     print(f"✅ Response received:")
     print(f"   {result}\n")
@@ -90,7 +92,7 @@ async def run_test():
     ]
 
     async def invoke_single(query: str, index: int):
-        result = await retrieve_tool.ainvoke({"query": query, "top_k": 3})
+        result = await retrieve_tool.ainvoke({"query": query, "top_k_child": 15, "top_k_parent": 3})
         return index, result
 
     tasks = [invoke_single(q, i) for i, q in enumerate(queries)]
