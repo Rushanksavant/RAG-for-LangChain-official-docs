@@ -8,14 +8,12 @@ Handles:
 """
 
 import os
-import time
 import uuid
 import asyncio
 import logging
 import json
 from typing import Callable, Awaitable
 
-import requests
 from qdrant_client import QdrantClient, models
 
 logger = logging.getLogger("retrieval_pipeline")
@@ -26,8 +24,9 @@ PARENTS_COLLECTION  = "documentation_parent_chunks"
 
 
 # ── Lazy-loaded singletons ────────────────────────────────────────────────────
-_bge_model = None
-_qdrant    = None
+_bge_model  = None
+_reranker   = None
+_qdrant     = None
 
 
 def _deterministic_uuid(source_string: str) -> str:
@@ -44,6 +43,16 @@ def _get_bge_model():
     return _bge_model
 
 
+def _get_reranker():
+    global _reranker
+    if _reranker is None:
+        logger.info("Loading BGE-Reranker-v2-m3 (~1.1 GB, first request only)...")
+        from FlagEmbedding import FlagReranker
+        _reranker = FlagReranker("BAAI/bge-reranker-v2-m3", use_fp16=False, device="cpu")
+        logger.info("Reranker ready.")
+    return _reranker
+
+
 def _get_qdrant() -> QdrantClient:
     global _qdrant
     if _qdrant is None:
@@ -56,61 +65,31 @@ def _get_qdrant() -> QdrantClient:
 
 
 # ── Reranker ──────────────────────────────────────────────────────────────────
-def _rerank_with_api(query: str, documents: list, max_retries: int = 6) -> list | None:
-    hf_token = os.environ.get("HF_API_KEY", "")
-    headers  = {
-        "Authorization": f"Bearer {hf_token}",
-        "Content-Type": "application/json",
-    }
+def _rerank_local(query: str, documents: list) -> list | None:
+    """
+    Reranks documents locally using FlagReranker (BAAI/bge-reranker-v2-m3).
 
-    # api-inference.huggingface.co was deprecated and decommissioned.
-    # New endpoint: router.huggingface.co/hf-inference
-    # New payload format: {"query": str, "texts": [str, ...]}
-    # Response format: [{"index": int, "score": float}, ...]  sorted by index
-    api_url = "https://router.huggingface.co/hf-inference/models/BAAI/bge-reranker-v2-m3/v1/rerank"
+    Replaces the old HF Inference API call — api-inference.huggingface.co was
+    decommissioned and bge-reranker-v2-m3 is not currently supported by any
+    hf-inference router endpoint. Running locally avoids all external API
+    dependencies for reranking and is faster (no network round-trip).
 
-    payload = {
-        "query": query,
-        "texts": documents,
-    }
+    FlagReranker.compute_score() is synchronous/blocking — caller must
+    run it in an executor to avoid blocking the async event loop.
 
-    for attempt in range(1, max_retries + 1):
-        try:
-            response = requests.post(api_url, headers=headers, json=payload, timeout=60)
-
-            if response.status_code == 503:
-                wait_time = min(response.json().get("estimated_time", 15), 20)
-                logger.warning(f"HF model loading, retrying in {wait_time}s ({attempt}/{max_retries})")
-                time.sleep(wait_time)
-                continue
-            elif response.status_code == 429:
-                time.sleep(attempt * 4)
-                continue
-            elif response.status_code != 200:
-                if attempt == max_retries:
-                    logger.error(f"HF API failed after {max_retries} attempts: {response.status_code} {response.text}")
-                    return None
-                time.sleep(attempt * 2)
-                continue
-
-            data = response.json()
-            # Response: [{"index": 0, "score": 0.92}, {"index": 1, "score": 0.45}, ...]
-            # Sorted by score descending by the API — we need scores in original
-            # document order so zip(documents, scores) aligns correctly.
-            scores_by_index = {item["index"]: item["score"] for item in data}
-            return [scores_by_index[i] for i in range(len(documents))]
-
-        except requests.exceptions.ConnectionError as ce:
-            logger.error(f"Fatal connection/DNS error to HF Reranker: {ce}")
-            return None  # Triggers instant fallback to RRF ordering
-
-        except Exception as e:
-            logger.warning(f"Reranker attempt {attempt} failed: {e}")
-            if attempt == max_retries:
-                return None
-            time.sleep(attempt * 2)
-
-    return None
+    Returns scores in the same order as the input documents list.
+    """
+    try:
+        reranker = _get_reranker()
+        pairs = [[query, doc] for doc in documents]
+        scores = reranker.compute_score(pairs, normalize=True)
+        # compute_score returns a single float when len(pairs)==1, else a list
+        if isinstance(scores, float):
+            scores = [scores]
+        return scores
+    except Exception as e:
+        logger.error(f"Local reranker failed: {e}")
+        return None
 
 
 # ── Main Pipeline Execution ───────────────────────────────────────────────────
@@ -208,40 +187,70 @@ async def execute_retrieval(
     await log_callback(f"Step 4/5: Fetched {len(parent_documents)} parent texts.")
 
     # ── Step 5: Rerank ────────────────────────────────────────────────────────
-    await log_callback("Step 5/5: Reranking with bge-reranker-v2-m3 (HF Inference API)...")
-    texts_to_rerank = [doc["text"] for doc in parent_documents]
+    # DISABLED — two reasons:
+    #   1. API: api-inference.huggingface.co decommissioned; bge-reranker-v2-m3
+    #      not supported by any current router.huggingface.co provider endpoint.
+    #   2. Latency + RAM: running FlagReranker locally adds ~3-4 sec on CPU and
+    #      ~1.1 GB RAM on top of BGE-M3's ~4.5 GB. On HF Spaces free tier
+    #      (2 vCPU, 16 GB) this pushes single-request latency to 10-12 sec and
+    #      risks OOM on concurrent requests. bge-reranker-v2-m3 requires 8192
+    #      token input limit (parent chunks go up to 8000+ chars) so smaller
+    #      alternatives like bge-reranker-base (512 token limit) would silently
+    #      truncate most chunks, making scores unreliable.
+    #
+    # Re-enable when one of these becomes viable:
+    #   a) HF Inference Providers add bge-reranker-v2-m3 support
+    #   b) Upgrade to HF Spaces paid tier (more RAM/CPU headroom)
+    #   c) Eval pipeline confirms reranking meaningfully improves retrieval
+    #      quality, justifying the latency+cost tradeoff
+    #
+    # scores = await loop.run_in_executor(
+    #     None,
+    #     lambda: _rerank_local(query, texts_to_rerank)
+    # )
+    #
+    # if scores is None:
+    #     await log_callback("⚠️  Reranker unavailable — falling back to RRF ordering.")
+    #     fallback_results = parent_documents[:top_k_parent]
+    #     return json.dumps([
+    #         {
+    #             "parent_id":       doc["id"],
+    #             "text":            doc["text"],
+    #             "relevance_score": None,
+    #             "source":          "rrf_fallback",
+    #         }
+    #         for doc in fallback_results
+    #     ], ensure_ascii=False)
+    #
+    # ranked = sorted(
+    #     [
+    #         {
+    #             "parent_id":       doc["id"],
+    #             "text":            doc["text"],
+    #             "relevance_score": float(score),
+    #             "source":          "reranker",
+    #         }
+    #         for doc, score in zip(parent_documents, scores)
+    #     ],
+    #     key=lambda x: x["relevance_score"],
+    #     reverse=True,
+    # )[:top_k_parent]
+    #
+    # await log_callback(
+    #     f"Step 5/5: Reranking complete. "
+    #     f"Top score: {ranked[0]['relevance_score']:.4f}"
+    # )
+    # return json.dumps(ranked, ensure_ascii=False)
 
-    scores = await loop.run_in_executor(
-        None,
-        lambda: _rerank_with_api(query, texts_to_rerank)
-    )
-
-    if scores is None:
-        # Fallback: RRF ordering
-        await log_callback("⚠️  Reranker unavailable — falling back to RRF ordering.")
-        fallback_results = parent_documents[:top_k_parent]
-        return json.dumps([
-            {
-                "parent_id":       doc["id"],
-                "text":            doc["text"],
-                "relevance_score": None,
-                "source":          "rrf_fallback",
-            }
-            for doc in fallback_results
-        ], ensure_ascii=False)
-
-    # Assemble and sort by reranker score
-    ranked = sorted(
-        [{
-        "parent_id":       doc["id"],
-        "text":            doc["text"],
-        "relevance_score": float(score),
-        "source":          "reranker"}
-            for doc, score in zip(parent_documents, scores)],
-        key=lambda x: x["relevance_score"], reverse=True
-        )[:top_k_parent]
-
-    await log_callback(f"Step 5/5: Reranking complete. "
-                    f"Top score: {ranked[0]['relevance_score']:.4f}")
-
-    return json.dumps(ranked, ensure_ascii=False)
+    # Returning top_k_parent results in RRF order (hybrid dense+sparse fusion)
+    await log_callback("Step 5/5: Skipped — returning top results in RRF order.")
+    rrf_results = parent_documents[:top_k_parent]
+    return json.dumps([
+        {
+            "parent_id":       doc["id"],
+            "text":            doc["text"],
+            "relevance_score": None,
+            "source":          "rrf",
+        }
+        for doc in rrf_results
+    ], ensure_ascii=False)
