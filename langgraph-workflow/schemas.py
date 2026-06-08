@@ -40,7 +40,7 @@ class AgentGraphState(TypedDict):
     """
     user_input         : str
     query_plan         : QueryPlan | None
-    retrieved_context  : list[dict]
+    retrieved_contexts : list[dict]
     context_sufficient : bool
     response           : str
     chat_history       : Annotated[List, add_messages]
