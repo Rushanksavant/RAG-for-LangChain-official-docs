@@ -22,14 +22,14 @@ field_descriptions = {
                         topics, API Reference questions, or gibberish input."""
     }
 
-class QueryPlanner(BaseModel):
+class QueryPlan(BaseModel):
     """
     For structured llm output from query-planner node.
     """
     translated_query : str        = Field(description= field_descriptions["translated_query"])
     sub_queries      : list[str]  = Field(description= field_descriptions["sub_queries"])
     needs_retrieval  : bool       = Field(description= field_descriptions["needs_retrieval"])
-    guardrail        : str | None = Field(description= field_descriptions["guardrail"])
+    guardrail        : str | None = Field(description= field_descriptions["guardrail"], default= None)
 
 
 
@@ -39,7 +39,7 @@ class AgentGraphState(TypedDict):
     throughout graph's execution. 
     """
     user_input         : str
-    query_plan         : QueryPlanner | None
+    query_plan         : QueryPlan | None
     retrieved_context  : list[dict]
     context_sufficient : bool
     response           : str
