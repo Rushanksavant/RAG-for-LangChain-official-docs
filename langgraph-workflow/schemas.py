@@ -39,10 +39,10 @@ class AgentGraphState(TypedDict):
     throughout graph's execution. 
     """
     user_input         : str
-    query_plan         : QueryPlan | None
-    retrieved_contexts : dict[str, list[str]]  # For {sub-query1: [retrieved chunks texts], sub-query2: [retrieved chunks texts]}
-    context_sufficient : bool
-    mapped_insights    : list[str]   # For translated-query: [llm-responses for (sub-queries + respective retrieved chunks] 
-    final_response     : str
-    chat_history       : Annotated[List, add_messages]
-    status_mssg        : list[str]
+    query_plan         : QueryPlan | None              = None
+    retrieved_contexts : dict[str, list[str]]          = {} # For {sub-query1: [retrieved chunks texts], sub-query2: [retrieved chunks texts]}
+    context_sufficient : bool                          = False
+    mapped_insights    : list[str]                     = [] # For translated-query: [llm-responses for (sub-queries + respective retrieved chunks] 
+    final_response     : str                           = ""
+    chat_history       : Annotated[List, add_messages] = []
+    status_mssg        : list[str]                     = []
