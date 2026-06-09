@@ -74,7 +74,7 @@ async def run_test():
     print("[2/4] Invoking retrieve_context (basic call)...")
     retrieve_tool = next(t for t in tools if t.name == "retrieve_context")
     result = await retrieve_tool.ainvoke(
-        {"query": "What are the types of PII middleware provided by Langchain?", 
+        {"query": "How to configure a multi-agent setup in LangGraph?", 
          "top_k_child": 3, 
          "top_k_parent": 3}
     )
