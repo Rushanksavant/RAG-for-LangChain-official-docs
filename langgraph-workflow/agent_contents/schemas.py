@@ -1,0 +1,48 @@
+from typing import TypedDict, Annotated, List
+from langgraph.graph.message import add_messages
+from pydantic import BaseModel, Field
+
+
+field_descriptions = {
+    "translated_query" : """Full rephrased version of the user query using precise 
+                        LangChain/LangGraph/LangSmith terminology. Resolves all pronouns 
+                        and vague references using chat history.""",
+
+    "sub_queries"      : """List of self-contained sub-queries, each carrying full semantic 
+                        meaning independently. Single-topic queries produce a list of one. 
+                        Maximum 4 sub-queries. Each must name the specific framework 
+                        (LangChain / LangGraph / LangSmith) it applies to.""",
+
+    "needs_retrieval"  : """True if the query requires fetching documentation context. 
+                        False for questions answerable from general LLM knowledge 
+                        (e.g. 'what is LangChain?', 'who made LangGraph?').""",
+
+    "guardrail"        : """Rejection reason string if the query must not be processed. 
+                        None otherwise. Triggered for: non-LangChain/LangGraph/LangSmith 
+                        topics, API Reference questions, or gibberish input."""
+    }
+
+class QueryPlan(BaseModel):
+    """
+    For structured llm output from query-planner node.
+    """
+    translated_query : str        = Field(description= field_descriptions["translated_query"])
+    sub_queries      : list[str]  = Field(description= field_descriptions["sub_queries"])
+    needs_retrieval  : bool       = Field(description= field_descriptions["needs_retrieval"])
+    guardrail        : str | None = Field(description= field_descriptions["guardrail"], default= None)
+
+
+
+class AgentGraphState(TypedDict):
+    """
+    The schema of state that holds information
+    throughout graph's execution. 
+    """
+    user_input         : str
+    query_plan         : QueryPlan | None              = None
+    retrieved_contexts : dict[str, list[str]]          = {} # For {sub-query1: [retrieved chunks texts], sub-query2: [retrieved chunks texts]}
+    context_sufficient : bool                          = False
+    mapped_insights    : list[str]                     = [] # For translated-query: [llm-responses for (sub-queries + respective retrieved chunks] 
+    final_response     : str                           = ""
+    chat_history       : Annotated[List, add_messages] = []
+    status_mssg        : list[str]                     = []
