@@ -1,11 +1,5 @@
 """
 LangGraph RAG agent for LangChain/LangGraph/LangSmith documentation.
-
-Graph flow:
-    plan_query
-        ├── guardrail      → END
-        ├── no retrieval   → generate_final_answer → END
-        └── needs retrieval → retrieve_contexts → evaluate_context → generate_final_answer → END
 """
 
 import asyncio
@@ -18,15 +12,9 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, START, END
 
-from schemas import AgentGraphState, QueryPlan
-from prompts import PLANNER_PROMPT, ANSWER_PROMPT
-from utilities import fetch_one, process_packet
-
-import sys
-from pathlib import Path
-# Adds the project root directory directly to Python's search path
-root_dir = Path(__file__).resolve().parents[1]
-sys.path.append(str(root_dir))
+from agent_contents.schemas import AgentGraphState, QueryPlan
+from agent_contents.prompts import PLANNER_PROMPT, ANSWER_PROMPT
+from agent_contents.utilities import fetch_one, process_packet
 
 from settings import settings
 
@@ -246,9 +234,9 @@ builder.add_edge("end_with_guardrail", END)
 graph = builder.compile(checkpointer=MemorySaver())
 
 # Visualize graph
-# graph_img = graph.get_graph().draw_mermaid_png()
-# with open("langgraph-workflow/graph.png", "wb") as f:
-#     f.write(graph_img)
+graph_img = graph.get_graph().draw_mermaid_png()
+with open("agent_contents/graph.png", "wb") as f:
+    f.write(graph_img)
 
 
 # ── Public entry point ─────────────────────────────────────────────────────────
