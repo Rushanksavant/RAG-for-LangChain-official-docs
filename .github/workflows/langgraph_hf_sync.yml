@@ -1,0 +1,47 @@
+name: Deploy LangGraph Workflow to Hugging Face Spaces
+
+on:
+  push:
+    branches:
+      - rag_pipeline_v2 # Triggers on your active development branch
+    paths:
+      - 'langgraph-workflow/**' # ONLY fires if changes occur inside this specific subfolder
+
+jobs:
+  deploy-to-hf:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git Config
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync Subdirectory to LangGraph Hugging Face Space
+        env:
+          HF_TOKEN_WRITE: ${{ secrets.HF_TOKEN_WRITE }}
+          HF_USERNAME: 'Rushank'
+          HF_SPACE_NAME: 'LangGraph-RAG-Agent'
+        run: |
+          # 1. Clone the target LangGraph Hugging Face Space repository cleanly into a temporary folder
+          git clone https://$HF_USERNAME:$HF_TOKEN_WRITE@huggingface.co/spaces/$HF_USERNAME/$HF_SPACE_NAME hf_space_target
+
+          # 2. Sync all contents from your isolated subfolder directly into the target clone
+          # This excludes local environment configs, caches, and git records
+          rsync -av --delete langgraph-workflow/ hf_space_target/ --exclude .git --exclude .env
+
+          # 3. Enter the target directory, evaluate changes, commit and force push
+          cd hf_space_target
+          git add .
+
+          # Prevent empty commit executions from causing pipeline failure flags
+          if git diff-index --quiet HEAD; then
+            echo "No changes detected in LangGraph workflow. Skipping deployment."
+          else
+            git commit -m "Automated LangGraph deployment from GitHub Actions (Commit: ${{ github.sha }})"
+            git push origin main --force
+          fi
