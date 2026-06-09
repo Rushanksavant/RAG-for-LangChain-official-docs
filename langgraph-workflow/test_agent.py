@@ -32,6 +32,24 @@ TEST_CASES = [
         "label": "Follow-up (tests history — run after case 2)",
         "input": "What about for a multi-agent setup?",
     },
+    {
+        "label": "Code block input — debug help",
+        "input": (
+            "I'm getting an error with this LangGraph code, can you help?\n\n"
+            "```python\n"
+            "from langgraph.graph import StateGraph\n"
+            "from typing import TypedDict\n\n"
+            "class State(TypedDict):\n"
+            "    messages: list\n\n"
+            "def my_node(state: State):\n"
+            "    return {\'messages\': state[\'messages\'] + [\'hello\']}\n\n"
+            "builder = StateGraph(State)\n"
+            "builder.add_node(\'my_node\', my_node)\n"
+            "graph = builder.compile()"
+            "```\n\n"
+            "Error: no entry point set\n"
+            "Why is this failing and how do I fix it?"
+        )}
 ]
 
 # Use a fixed session ID so all test cases share the same memory thread
@@ -62,8 +80,9 @@ async def run_tests():
         print(f"Status:           {' → '.join(result['status_mssg'])}")
 
         # Answer
-        print(f"\nAnswer:\n{result['response']}")
+        print(f"\nAnswer:\n{result['final_response']}")
         print("=" * 60)
+        asyncio.sleep(15)
 
 
 if __name__ == "__main__":
