@@ -74,8 +74,14 @@ async def plan_query(state: AgentGraphState) -> dict:
 
     logger.info(f"plan_query: guardrail={plan.guardrail!r}, needs_retrieval={plan.needs_retrieval}, sub_queries={plan.sub_queries}")
 
-    status = state.get("status_mssg", []) + [f"Query plan ready — {len(plan.sub_queries)} sub-quer{'y' if len(plan.sub_queries) == 1 else 'ies'}"]
-    return {"query_plan": plan, "status_mssg": status}
+    status = [f"Query plan ready — {len(plan.sub_queries)} sub-quer{'y' if len(plan.sub_queries) == 1 else 'ies'}"]
+    return {"query_plan": plan, 
+            "status_mssg": status,
+#### Resetting the schema (to avoid context pollution) #### IMPORTANT
+            "retrieved_contexts": {},
+            "context_sufficient": False,
+            "mapped_insights": [],
+            "final_response": ""}
 
 
 # ── Node 2: retrieve_contexts ──────────────────────────────────────────────────
