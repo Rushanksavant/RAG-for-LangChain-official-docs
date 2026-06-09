@@ -4,8 +4,8 @@ LangGraph RAG agent for LangChain/LangGraph/LangSmith documentation.
 Graph flow:
     plan_query
         ├── guardrail      → END
-        ├── no retrieval   → generate_answer → END
-        └── needs retrieval → retrieve_contexts → evaluate_context → generate_answer → END
+        ├── no retrieval   → generate_final_answer → END
+        └── needs retrieval → retrieve_contexts → evaluate_context → generate_final_answer → END
 """
 
 import asyncio
@@ -20,7 +20,7 @@ from langgraph.graph import StateGraph, START, END
 
 from schemas import AgentGraphState, QueryPlan
 from prompts import PLANNER_PROMPT, ANSWER_PROMPT
-from retrieve_and_clean import fetch_one
+from utilities import fetch_one, process_packet
 
 import sys
 from pathlib import Path
@@ -57,7 +57,7 @@ mcp_client = MultiServerMCPClient({
 
 # ── History helper ─────────────────────────────────────────────────────────────
 
-def get_recent_history(history: list, max_exchanges: int = 10) -> list:
+def get_recent_history(history: list, max_exchanges: int = 5) -> list:
     """Returns the last N exchanges (2 messages per exchange) from chat history."""
     return history[-(max_exchanges * 2):]
 
@@ -83,24 +83,19 @@ async def plan_query(state: AgentGraphState) -> dict:
 async def retrieve_contexts(state: AgentGraphState) -> dict:
     logger.info("retrieve_contexts: start")
 
-    # Fire all sub-queries in parallel
+    # Fire all sub-queries in parallel (each returns {query: [chunks]})
     sub_queries = state["query_plan"].sub_queries
-    all_results = await asyncio.gather(*[fetch_one(mcp_client, q) for q in sub_queries])
+    all_packets = await asyncio.gather(*[fetch_one(mcp_client, q) for q in sub_queries]) # all_packets = [{sub-query: [retrieved chunks texts]}, ..]
 
-    # Merge results, deduplicate by parent_id
-    seen   = set()
-    merged = []
-    for chunks in all_results:
-        for chunk in chunks:
-            pid = chunk.get("parent_id")
-            if pid and pid not in seen:
-                seen.add(pid)
-                merged.append(chunk)
+    # Merge individual query packets into a single master dictionary
+    subquery_contextList = {}
+    for packet in all_packets:
+        subquery_contextList.update(packet)
 
-    logger.info(f"retrieve_contexts: {len(merged)} unique chunks from {len(sub_queries)} sub-queries")
+    logger.info(f"retrieve_contexts: {len(sub_queries) * 2} chunks from {len(sub_queries)} sub-queries")
 
-    status = state.get("status_mssg", []) + [f"Retrieved {len(merged)} context chunks"]
-    return {"retrieved_contexts": merged, "status_mssg": status}
+    status = [f"Retrieved {len(sub_queries) * 2} context chunks"]
+    return {"retrieved_contexts": subquery_contextList, "status_mssg": status}
 
 
 # ── Node 3: evaluate_context ───────────────────────────────────────────────────
@@ -109,56 +104,74 @@ async def evaluate_context(state: AgentGraphState) -> dict:
     logger.info("evaluate_context: start")
 
     # Reranker disabled — presence check is the honest signal for now.
-    sufficient = len(state.get("retrieved_contexts", [])) > 0
+    sufficient = len(state.get("retrieved_contexts").keys()) > 0
 
     status = state.get("status_mssg", []) + ["Context sufficient" if sufficient else "No context found"]
     return {"context_sufficient": sufficient, "status_mssg": status}
 
 
-# ── Node 4: generate_answer ────────────────────────────────────────────────────
+# ── Node 5: generate_subquery_answer ────────────────────────────────────────────────────
 
-async def generate_answer(state: AgentGraphState) -> dict:
-    logger.info("generate_answer: start")
+async def generate_subquery_answer(state: AgentGraphState) -> dict:
+    logger.info("generate_subquery_answer: start")
+    subquery_contextList = state["retrieved_contexts"] 
 
-    plan       = state["query_plan"]
-    contexts   = state.get("retrieved_contexts")
-    sufficient = state.get("context_sufficient")
-    history    = get_recent_history(state.get("chat_history"))
+    # Parallel processing using standard .items() unpacking
+    insights = await asyncio.gather(*[
+        process_packet(llm, query, chunks) for query, chunks in subquery_contextList.items()
+    ])
+    
+    return {"mapped_insights": list(insights)}
 
-    # Allow general knowledge if retrieval wasn't needed
-    if not plan.needs_retrieval:
-        context_text = "No retrieval needed. Answer the user's general question using your pre-trained knowledge."
-        sufficient = True # Satisfies prompt safety constraint
-    # Else if context retrieved, bind it together    
-    elif sufficient and contexts:
-        context_text = "\n\n".join(
-            f"[Chunk {i+1}]\n{c.get('text', '')}"
-            for i, c in enumerate(contexts)
-        )
-    # Else fixed answer to avoid hallucination   
+
+# ── Node 4: generate_final_answer ────────────────────────────────────────────────────
+
+async def generate_final_answer(state: AgentGraphState) -> dict:
+    logger.info("generate_final_answer: start")
+
+    status             = state.get("status_mssg")[:]
+    plan               = state["query_plan"]
+    mapped_insights    = state.get("mapped_insights")
+    retrieved_contexts = state.get("retrieved_contexts")
+    chat_history       = state.get("chat_history")
+    
+    # 2. Dynamic Prompt Construction
+    # PATH A: Multi-subqueries-outputs (Map-Reduce route taken)
+    if mapped_insights:
+        combined_insights = "\n\n".join(mapped_insights)
+        prompt = f"""
+        Original User Query: {plan.translated_query} 
+
+        Synthesize these researched components into a cohesive final answer.
+        Research Insights:
+        {combined_insights}
+        """
+        status.append("Synthesizing multi-query insights")
+        
+    # PATH B: Single-Query (Bypassed map step, use dictionary directly)
+    elif plan.needs_retrieval and not mapped_insights:
+        ctx_text = "\n\n".join(f"[Chunk {i+1}]\n{text}" for i, text in enumerate(retrieved_contexts.values()))
+        prompt = f"Query: {plan.translated_query}\n\nContext:\n{ctx_text}"
+        status.append("Generating final answer from single-query context")
+        
+    # PATH C: No Retrieval Needed (General Knowledge)
     else:
-        context_text = "No relevant documentation context retrieved."
+        prompt = f"Query: {plan.translated_query}\n\nThis is a general knowledge question. Answer directly from your training knowledge — no documentation context is needed."
+        status.append("Generating final answer from pre-trained knowledge")
 
-    user_prompt = f"""
-                Translated query: {plan.translated_query}
-
-                Sub-queries used:
-                {chr(10).join(f"- {q}" for q in plan.sub_queries)}
-
-                Context (context_sufficient={sufficient}):
-                {context_text}
-                """.strip()
-
-    messages  = [SystemMessage(content=ANSWER_PROMPT)] + history + [HumanMessage(content=user_prompt)]
-    response  = await llm.ainvoke(messages)
-    answer    = response.content
-
-    status = state.get("status_mssg", []) + ["Answer ready"]
+    # 3. LLM Invocation
+    messages = [SystemMessage(content=ANSWER_PROMPT)] + chat_history + [HumanMessage(content=prompt)]
+    
+    resp = await llm.ainvoke(messages)
+    answer = resp.content
+    
+    status.append("Final answer generated")
+    
     return {
-        "response": answer,
-        "status_mssg": status,
-        # append this exchange to chat history
-        "chat_history": [HumanMessage(content=state["user_input"]), AIMessage(content=answer)]}
+        "final_response": answer,
+        "chat_history": [HumanMessage(content=state["user_input"]), AIMessage(content=answer)],
+        "status_mssg": status
+    }
 
 
 # ── Node 5: guardrail ──────────────────────────────────────────────────────────
@@ -168,7 +181,7 @@ async def end_with_guardrail(state: AgentGraphState) -> dict:
     status = state.get("status_mssg", []) + ["Guardrail triggered"]
     logger.info(f"end_with_guardrail: {msg!r}")
     return {
-        "response": msg,
+        "final_response": msg,
         "status_mssg": status,
         "chat_history": [HumanMessage(content=state["user_input"]), AIMessage(content=msg)]}
 
@@ -176,12 +189,30 @@ async def end_with_guardrail(state: AgentGraphState) -> dict:
 # ── Routing ────────────────────────────────────────────────────────────────────
 
 def route_after_plan(state: AgentGraphState) -> str:
+    """
+    Routing after plan_query:
+     - end_with_guardrail: if irrelevant question
+     - retrieve context: if retrieval required
+     - generate_final_answer: if basic/simple question
+    """
     plan = state["query_plan"]
     if plan.guardrail:
-        return "end_with_guardrail"
+        return "irrelevant query"
     if not plan.needs_retrieval:
-        return "generate_answer"
-    return "retrieve_contexts"
+        return "basic query"
+    return "requires retrieval"
+
+def if_subqueries(state: AgentGraphState) -> str:
+    subquery_contextList = state.get("retrieved_contexts")
+    """"
+    Routing after evaluate_context:
+     - generate_final_answer: if context map contains single packet (subquery = translated query)
+     - generate_subquery_answer: if context map containes >1 subqueries
+
+    """
+    if len(subquery_contextList.keys()) == 1:
+        return "single translated-query"
+    return "multiple sub-query"
 
 
 # ── Graph assembly ─────────────────────────────────────────────────────────────
@@ -191,24 +222,27 @@ builder = StateGraph(AgentGraphState)
 builder.add_node("plan_query",         plan_query)
 builder.add_node("retrieve_contexts",  retrieve_contexts)
 builder.add_node("evaluate_context",   evaluate_context)
-builder.add_node("generate_answer",    generate_answer)
+builder.add_node("generate_subquery_answer", generate_subquery_answer)
+builder.add_node("generate_final_answer",    generate_final_answer)
 builder.add_node("end_with_guardrail", end_with_guardrail)
 
 builder.add_edge(START, "plan_query")
-builder.add_conditional_edges("plan_query", route_after_plan, {"retrieve_contexts":"retrieve_contexts",
-                                                               "generate_answer":"generate_answer",
-                                                               "end_with_guardrail":"end_with_guardrail"})
+builder.add_conditional_edges("plan_query", route_after_plan, {"requires retrieval":"retrieve_contexts",
+                                                               "basic query":"generate_final_answer",
+                                                               "irrelevant query":"end_with_guardrail"})
 builder.add_edge("retrieve_contexts",  "evaluate_context")
-builder.add_edge("evaluate_context",   "generate_answer")
-builder.add_edge("generate_answer",    END)
+builder.add_conditional_edges("evaluate_context",   if_subqueries, {"single translated-query":"generate_final_answer",
+                                                                    "multiple sub-query":"generate_subquery_answer"})
+builder.add_edge("generate_subquery_answer", "generate_final_answer")
+builder.add_edge("generate_final_answer",    END)
 builder.add_edge("end_with_guardrail", END)
 
 graph = builder.compile(checkpointer=MemorySaver())
 
 # Visualize graph
-graph_img = graph.get_graph().draw_mermaid_png()
-with open("langgraph-workflow/graph.png", "wb") as f:
-    f.write(graph_img)
+# graph_img = graph.get_graph().draw_mermaid_png()
+# with open("langgraph-workflow/graph.png", "wb") as f:
+#     f.write(graph_img)
 
 
 # ── Public entry point ─────────────────────────────────────────────────────────
@@ -221,20 +255,8 @@ async def run_agent(user_input: str, session_id: str) -> dict:
     config = {"configurable": {"thread_id": session_id}}
 
     result = await graph.ainvoke(
-        {
-            "user_input"         : user_input,
-            "query_plan"         : None,
-            "retrieved_contexts" : [],
-            "context_sufficient" : False,
-            "response"           : "",
-            "chat_history"       : [],
-            "status_mssg"        : [],
-        },
-        config=config,
-    )
+        {"user_input": user_input}, config=config)
 
-    return {
-        "response":          result["response"],
+    return {"final_response":          result["final_response"],
         "status_mssg": result["status_mssg"],
-        "query_plan":      result["query_plan"],
-    }
+        "query_plan":      result["query_plan"]}
