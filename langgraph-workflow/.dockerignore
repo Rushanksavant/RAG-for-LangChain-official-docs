@@ -1,0 +1,36 @@
+# ── ENVIRONMENT SECRETS ──────────────────────────────────────────────────────
+# Prevents baking active credentials into local images or build layers
+.env
+*.env
+secrets/
+
+# ── TESTING & DEVELOPMENT ────────────────────────────────────────────────────
+# Keeps your test suites out of the production image environment
+test_agent.py
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── PYTHON CACHE & ARTIFACTS ─────────────────────────────────────────────────
+# Prevents host bytecode and system-compiled modules from causing cross-OS errors
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ── VIRTUAL ENVIRONMENTS ─────────────────────────────────────────────────────
+# Ensures local dependencies don't overwrite the cleaner container environment
+.venv/
+venv/
+env/
+ENV/
+
+# ── IDE & WORKSPACE CONFIGS ──────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── SYSTEM GARBAGE ──────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
