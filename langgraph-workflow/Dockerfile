@@ -46,6 +46,6 @@ CMD ["streamlit", "run", "app.py"]
 # docker build -t langgraph-assistant:latest .
 
 # 3. Run and Test the Container Natively
-# docker run -d -p 8501:8501 --env-file .env --name langgraph-test langgraph-assistant:latest
+# docker run -it -p 8501:8501 --env-file .env --name langgraph-test langgraph-assistant:latest
 
 # Streamlit app at: http://localhost:8501

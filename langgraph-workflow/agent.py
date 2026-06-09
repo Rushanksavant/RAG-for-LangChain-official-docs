@@ -234,9 +234,9 @@ builder.add_edge("end_with_guardrail", END)
 graph = builder.compile(checkpointer=MemorySaver())
 
 # Visualize graph
-graph_img = graph.get_graph().draw_mermaid_png()
-with open("agent_contents/graph.png", "wb") as f:
-    f.write(graph_img)
+# graph_img = graph.get_graph().draw_mermaid_png()
+# with open("agent_contents/graph.png", "wb") as f:
+#     f.write(graph_img)
 
 
 # ── Public entry point ─────────────────────────────────────────────────────────
