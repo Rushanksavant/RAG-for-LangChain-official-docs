@@ -53,7 +53,9 @@ from prompts  import ANSWER_PROMPT
 # ──────────────────────────────────────────────────────────
 async def process_packet(llm: BaseLanguageModel, query: str, chunks: list) -> str:
     """Processes an isolated sub-query and its chunks map-reduce style."""
-    ctx_text = "\n\n".join(f"[Chunk {i+1}]\n{c.get('text', '')}" for i, c in enumerate(chunks))
+    ctx_text = "\n\n".join(
+        f"[Chunk {i+1}]\n{c if isinstance(c, str) else c.get('text', '')}" 
+        for i, c in enumerate(chunks))
     
     prompt = f"""
     Analyze following context to answer: "{query}"
