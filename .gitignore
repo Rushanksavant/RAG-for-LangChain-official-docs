@@ -12,6 +12,7 @@ wheels/
 # Ignore local raw documentation folders
 data/raw/
 .env
+langgraph-workflow/.env
 
 ## ignore the development instructions md
 dev.md
@@ -25,3 +26,7 @@ data/qdrant_storage
 ## ignore uploading model weights
 .fastembed/
 __pycache__/
+
+
+## due to settings.py import
+.src/rag_for_langchain_langgraph_official_docs.egg-info

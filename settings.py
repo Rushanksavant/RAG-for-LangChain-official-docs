@@ -8,10 +8,13 @@ class Settings(BaseSettings):
     QDRANT_CLOUD_KEY: SecretStr
     HF_API_KEY: SecretStr
     
-    GEMINI_API_KEY: SecretStr ## doesn't reveal on print
-    
+    GEMINI_API_KEY: SecretStr 
     MCP_SECRET_KEY: SecretStr 
     SERVER_URL: str
+
+    GROQ_API_KEY: SecretStr
+    
+    max_input_chars: int = 1000  # User query should be at max 250 tokens
     
     ENV: str
 
