@@ -34,3 +34,9 @@ docker run -it \
   --env-file .env \
   --name langgraph-test \
   langgraph-assistant:latest
+
+
+## Keep Container alive
+To keep docker container alive in hf-space after long hours of inactivity, we have created a cron-job that hits `https://rushank-langgraph-rag-agent.hf.space/_stcore/health` every 10 mins and receives **ok** status
+`/_stcore/health` is generated my streamlit automatically.
+**Cron-job url:** `https://console.cron-job.org/jobs/7778794/history`
