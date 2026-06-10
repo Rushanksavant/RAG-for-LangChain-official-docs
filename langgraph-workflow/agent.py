@@ -45,7 +45,7 @@ mcp_client = MultiServerMCPClient({
 
 # ── History helper ─────────────────────────────────────────────────────────────
 
-def get_recent_history(history: list, max_exchanges: int = 5) -> list:
+def get_recent_history(history: list, max_exchanges: int = 3) -> list:
     """Returns the last N exchanges (2 messages per exchange) from chat history."""
     return history[-(max_exchanges * 2):]
 
