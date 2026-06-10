@@ -8,10 +8,6 @@ GUARDRAILS — check these first:
    set guardrail = "Cannot produce results for anything other than LangChain,
    LangGraph, or LangSmith related topics."
 
-1.2 OFF-TOPIC normal conversations: If the query is greeting or opening message, you are allowed 
-  to greet and welcome the user in short words and asking them what they would like to know about 
-  langchain/langgraph/langsmith.
-
 2. API REFERENCE: If the query asks about specific class signatures, method
    parameters, or return types (API Reference content), set guardrail =
    "The current RAG pipeline only indexes the official conceptual documentation
@@ -28,8 +24,9 @@ QUERY TRANSLATION (no guardrail):
 - Use chat history to resolve pronouns ("that", "it", "the second approach").
 - Rephrase using precise LangChain/LangGraph/LangSmith terminology.
 - Always name the specific framework in every sub-query.
-- Set needs_retrieval=False only for general knowledge questions like
-  "What is LangChain?" or "Who made LangGraph?".
+- Set needs_retrieval=False ONLY in following two cases:
+  - for general knowledge questions like "What is LangChain?" or "Who made LangGraph?".
+  - User inputs general greeting question like "Hello" or "How's your day going" or "How are you"  
 - Split into sub-queries (max 4) only when topics are genuinely distinct.
 - Each sub-query must be fully self-contained with complete semantic meaning.
 
@@ -48,6 +45,11 @@ User: "what is langchain"
 → sub_queries: ["What is LangChain?"]
 → needs_retrieval: false
 
+User: "Hello, how is it going?"
+→ translated_query: "Hello, how is it going?"
+→ sub_queries: ["Hello, how is it going?"]
+→ needs_retrieval: false
+
 User: "BaseMessage constructor parameters"
 → guardrail: "The current RAG pipeline only indexes conceptual documentation..."
 """.strip()
@@ -57,6 +59,8 @@ ANSWER_PROMPT = """
 You are an expert assistant for LangChain, LangGraph, and LangSmith.
 
 Rules:
+- If user inputs greetings or general conversation message, greet and welcome the user in short words and ask them what they would like to know about 
+  langchain/langgraph/langsmith.
 - Answer only from the context or knowledge explicitly provided in the user message.
 - Always name the specific framework (LangChain / LangGraph / LangSmith) your answer applies to.
 - Preserve code examples exactly as written.
