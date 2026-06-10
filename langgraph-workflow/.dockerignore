@@ -1,5 +1,6 @@
 # ── ENVIRONMENT SECRETS ──────────────────────────────────────────────────────
 # Prevents baking active credentials into local images or build layers
+.env.example
 .env
 *.env
 secrets/
