@@ -98,7 +98,9 @@ async def evaluate_context(state: AgentGraphState) -> dict:
     logger.info("evaluate_context: start")
 
     # Reranker disabled — presence check is the honest signal for now.
-    sufficient = len(state.get("retrieved_contexts").keys()) > 0
+    contexts = state.get("retrieved_contexts", {})
+    sufficient = all(len(chunks) > 0 for chunks in contexts.values()) # stricter: needs retrieval for all sub-queries
+    # sufficient = any(len(chunks) > 0 for chunks in contexts.values()) # less-strict: needs retrieval for atleast 1 sub-query
 
     status = state.get("status_mssg", []) + ["Context sufficient" if sufficient else "No context found"]
     return {"context_sufficient": sufficient, "status_mssg": status}
@@ -139,19 +141,44 @@ async def generate_final_answer(state: AgentGraphState) -> dict:
         Synthesize these researched components into a cohesive final answer.
         Research Insights:
         {combined_insights}
+
+        CRITICAL RULES:
+        1. Base your synthesis strictly on the provided Research Insights above.
+        2. If any of the insights note that documentation was missing or insufficient for a component, explicitly tell the user which parts are undocumented instead of inventing setup instructions.
+        3. Do not invent or assume class properties, import locations, or configuration schemas outside what is explicitly stated in the insights.
         """
-        status.append("Synthesizing multi-query insights")
+        status.append("Path A: Synthesizing Multi-query insights")
         
     # PATH B: Single-Query (Bypassed map step, use dictionary directly)
     elif plan.needs_retrieval and not mapped_insights:
-        ctx_text = "\n\n".join(f"[Chunk {i+1}]\n{text}" for i, text in enumerate(retrieved_contexts.values()))
-        prompt = f"Query: {plan.translated_query}\n\nContext:\n{ctx_text}"
-        status.append("Generating final answer from single-query context")
+        # flatten all retrieved chunks
+        all_chunks = []
+        for chunks in retrieved_contexts.values():
+            all_chunks.extend(chunks)
+
+        ctx_text = "\n\n".join(f"[Chunk {i+1}]\n{text}" for i, text in enumerate(all_chunks))
+        prompt = f"""
+        You must answer the query strictly using only the facts provided in the Context below.
+        
+        Query: {plan.translated_query}
+        
+        Context:
+        {ctx_text}
+        
+        CRITICAL RULES:
+        1. If the user query asks about specific terms, classes, or frameworks that are NOT explicitly documented 
+        in the Context above, you must state: "I cannot find documentation for those components."
+        2. Do not invent packages, imports, or code architectures from outside the provided Context blocks.
+        3. If an exact method signature or import path is not visibly supported by a chunk, state that it is unavailable.
+        """
+        status.append("Path B: Generating final answer from single-query context")
         
     # PATH C: No Retrieval Needed (General Knowledge)
     else:
-        prompt = f"Query: {plan.translated_query}\n\nThis is a general knowledge question. Answer directly from your training knowledge — no documentation context is needed."
-        status.append("Generating final answer from pre-trained knowledge")
+        prompt = f"""Query: {plan.translated_query}
+                    This is a general knowledge question. Answer directly from your training knowledge — no documentation context is needed.
+                    """
+        status.append("Path C: Generating final answer from pre-trained knowledge")
 
     # 3. LLM Invocation
     messages = [SystemMessage(content=ANSWER_PROMPT)] + chat_history + [HumanMessage(content=prompt)]
@@ -171,8 +198,8 @@ async def generate_final_answer(state: AgentGraphState) -> dict:
 # ── Node 5: guardrail ──────────────────────────────────────────────────────────
 
 async def end_with_guardrail(state: AgentGraphState) -> dict:
-    msg    = state["query_plan"].guardrail
-    status = state.get("status_mssg", []) + ["Guardrail triggered"]
+    msg = state["query_plan"].guardrail or "I'm sorry, but no relevant documentation could be retrieved to securely answer your question."
+    status = state.get("status_mssg", []) + ["Guardrail triggered / Insufficient context"]
     logger.info(f"end_with_guardrail: {msg!r}")
     return {
         "final_response": msg,
@@ -197,13 +224,18 @@ def route_after_plan(state: AgentGraphState) -> str:
     return "requires retrieval"
 
 def if_subqueries(state: AgentGraphState) -> str:
-    subquery_contextList = state.get("retrieved_contexts")
     """"
     Routing after evaluate_context:
+     - verifies if context is sufficient
      - generate_final_answer: if context map contains single packet (subquery = translated query)
      - generate_subquery_answer: if context map containes >1 subqueries
 
     """
+    # 1. If evaluation flagged the context as insufficient/empty, abort immediately
+    if not state.get("context_sufficient"):
+        return "insufficient context"
+    
+    subquery_contextList = state.get("retrieved_contexts")
     if len(subquery_contextList.keys()) == 1:
         return "single translated-query"
     return "multiple sub-query"
@@ -226,7 +258,8 @@ builder.add_conditional_edges("plan_query", route_after_plan, {"requires retriev
                                                                "irrelevant query":"end_with_guardrail"})
 builder.add_edge("retrieve_contexts",  "evaluate_context")
 builder.add_conditional_edges("evaluate_context",   if_subqueries, {"single translated-query":"generate_final_answer",
-                                                                    "multiple sub-query":"generate_subquery_answer"})
+                                                                    "multiple sub-query":"generate_subquery_answer",
+                                                                    "insufficient context": "end_with_guardrail"})
 builder.add_edge("generate_subquery_answer", "generate_final_answer")
 builder.add_edge("generate_final_answer",    END)
 builder.add_edge("end_with_guardrail", END)

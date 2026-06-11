@@ -58,10 +58,15 @@ async def process_packet(llm: BaseLanguageModel, query: str, chunks: list) -> st
         for i, c in enumerate(chunks))
     
     prompt = f"""
-    Analyze following context to answer: "{query}"
+    Analyze following context to resolve the sub-query: "{query}"
     
     Context:
     {ctx_text}
+
+    GROUNDING RULES:
+    1. Extract answers strictly from the context blocks provided.
+    2. If the context does not contain direct, explicit information to answer this sub-query completely, output exactly: "Insufficient documentation available for this sub-component."
+    3. Do not assume or extrapolate syntax based on other frameworks.
     """
 
     resp = await llm.ainvoke([SystemMessage(content=ANSWER_PROMPT), HumanMessage(content=prompt)])
