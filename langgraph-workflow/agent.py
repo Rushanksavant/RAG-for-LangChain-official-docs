@@ -8,12 +8,13 @@ import logging
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.chat_models import init_chat_model
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, START, END
 
 from agent_contents.schemas import AgentGraphState, QueryPlan
-from agent_contents.prompts import PLANNER_PROMPT, ANSWER_PROMPT
+from agent_contents.prompts import PLANNER_PROMPT, ANSWER_PROMPT, PATH_A_RULES, PATH_B_RULES, PATH_C_RULES
 from agent_contents.utilities import fetch_one, process_packet
 
 from settings import settings
@@ -23,12 +24,13 @@ logger = logging.getLogger("agent")
 
 # ── LLM setup ─────────────────────────────────────────────────────────────────
 
-# llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash",
-#                             google_api_key=settings.GEMINI_API_KEY.get_secret_value(),
-#                             temperature=0.0)
-from langchain.chat_models import init_chat_model
-llm = init_chat_model(model='openai/gpt-oss-120b', model_provider='groq', 
-                      temperature=0, api_key= settings.GROQ_API_KEY.get_secret_value())
+llm = ChatGoogleGenerativeAI(
+    model="gemini-3.1-flash-lite", 
+    google_api_key=settings.GEMINI_API_KEY.get_secret_value(),
+    temperature=0.0)
+
+# llm = init_chat_model(model='openai/gpt-oss-120b', model_provider='groq', 
+#                       temperature=0, api_key= settings.GROQ_API_KEY.get_secret_value())
 
 
 # ── MCP client ─────────────────────────────────────────────────────────────────
@@ -98,9 +100,7 @@ async def evaluate_context(state: AgentGraphState) -> dict:
     logger.info("evaluate_context: start")
 
     # Reranker disabled — presence check is the honest signal for now.
-    contexts = state.get("retrieved_contexts", {})
-    sufficient = all(len(chunks) > 0 for chunks in contexts.values()) # stricter: needs retrieval for all sub-queries
-    # sufficient = any(len(chunks) > 0 for chunks in contexts.values()) # less-strict: needs retrieval for atleast 1 sub-query
+    sufficient = len(state.get("retrieved_contexts").keys()) > 0
 
     status = state.get("status_mssg", []) + ["Context sufficient" if sufficient else "No context found"]
     return {"context_sufficient": sufficient, "status_mssg": status}
@@ -143,20 +143,19 @@ async def generate_final_answer(state: AgentGraphState) -> dict:
         {combined_insights}
 
         CRITICAL RULES:
-        1. Base your synthesis strictly on the provided Research Insights above.
-        2. If any of the insights note that documentation was missing or insufficient for a component, explicitly tell the user which parts are undocumented instead of inventing setup instructions.
-        3. Do not invent or assume class properties, import locations, or configuration schemas outside what is explicitly stated in the insights.
+        {PATH_A_RULES}
         """
         status.append("Path A: Synthesizing Multi-query insights")
         
     # PATH B: Single-Query (Bypassed map step, use dictionary directly)
     elif plan.needs_retrieval and not mapped_insights:
+        ctx_text = "\n\n".join(f"[Chunk {i+1}]\n{text}" for i, text in enumerate(retrieved_contexts.values()))
         # flatten all retrieved chunks
-        all_chunks = []
-        for chunks in retrieved_contexts.values():
-            all_chunks.extend(chunks)
+        # all_chunks = []
+        # for chunks in retrieved_contexts.values():
+        #     all_chunks.extend(chunks)
 
-        ctx_text = "\n\n".join(f"[Chunk {i+1}]\n{text}" for i, text in enumerate(all_chunks))
+        # ctx_text = "\n\n".join(f"[Chunk {i+1}]\n{text}" for i, text in enumerate(all_chunks))
         prompt = f"""
         You must answer the query strictly using only the facts provided in the Context below.
         
@@ -166,17 +165,14 @@ async def generate_final_answer(state: AgentGraphState) -> dict:
         {ctx_text}
         
         CRITICAL RULES:
-        1. If the user query asks about specific terms, classes, or frameworks that are NOT explicitly documented 
-        in the Context above, you must state: "I cannot find documentation for those components."
-        2. Do not invent packages, imports, or code architectures from outside the provided Context blocks.
-        3. If an exact method signature or import path is not visibly supported by a chunk, state that it is unavailable.
+        {PATH_B_RULES}
         """
         status.append("Path B: Generating final answer from single-query context")
         
     # PATH C: No Retrieval Needed (General Knowledge)
     else:
         prompt = f"""Query: {plan.translated_query}
-                    This is a general knowledge question. Answer directly from your training knowledge — no documentation context is needed.
+                    {PATH_C_RULES}
                     """
         status.append("Path C: Generating final answer from pre-trained knowledge")
 
@@ -184,7 +180,8 @@ async def generate_final_answer(state: AgentGraphState) -> dict:
     messages = [SystemMessage(content=ANSWER_PROMPT)] + chat_history + [HumanMessage(content=prompt)]
     
     resp = await llm.ainvoke(messages)
-    answer = resp.content
+    answer = resp.content[0]["text"] # For gemini
+    # answer = resp.content            # For gpt-oss-120b
     
     status.append("Final answer generated")
     
@@ -268,7 +265,7 @@ graph = builder.compile(checkpointer=MemorySaver())
 
 # Visualize graph
 # graph_img = graph.get_graph().draw_mermaid_png()
-# with open("agent_contents/graph.png", "wb") as f:
+# with open("langgraph-workflow/agent_contents/graph.png", "wb") as f:
 #     f.write(graph_img)
 
 
@@ -284,6 +281,6 @@ async def run_agent(user_input: str, session_id: str) -> dict:
     result = await graph.ainvoke(
         {"user_input": user_input}, config=config)
 
-    return {"final_response":          result["final_response"],
-        "status_mssg": result["status_mssg"],
-        "query_plan":      result["query_plan"]}
+    return {"final_response" : result["final_response"],
+        "status_mssg"        : result["status_mssg"],
+        "query_plan"         : result["query_plan"]}
