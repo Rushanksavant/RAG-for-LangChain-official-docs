@@ -67,7 +67,14 @@ async def process_packet(llm: BaseLanguageModel, query: str, chunks: list) -> st
     1. Extract answers strictly from the context blocks provided.
     2. If the context does not contain direct, explicit information to answer this sub-query completely, output exactly: "Insufficient documentation available for this sub-component."
     3. Do not assume or extrapolate syntax based on other frameworks.
+    4. Do not miss any detail that might directly/indirectly answer the sub-query
+    5. Preserve:
+        - all code examples exactly as written.
+        - all markdown tables exactly as written.
+    5. Your response will be used as context to next agentic-node, hence answer's accuracy to the context is highly important to avoid hallucinations. 
+    6. Never assume, infer, or hallucinate deprecation timelines, architectural migrations, or legacy framework replacements unless they are explicitly stated in the context blocks.
     """
 
     resp = await llm.ainvoke([SystemMessage(content=ANSWER_PROMPT), HumanMessage(content=prompt)])
-    return f"### Topic: {query}\n{resp.content}\n"
+    return f"### Topic: {query}\n{resp.content[0]["text"]}\n"  # For gemini
+    return f"### Topic: {query}\n{resp.content}\n"  # For gpt-oss-120b
