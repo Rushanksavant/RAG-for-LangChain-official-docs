@@ -76,5 +76,5 @@ async def process_packet(llm: BaseLanguageModel, query: str, chunks: list) -> st
     """
 
     resp = await llm.ainvoke([SystemMessage(content=ANSWER_PROMPT), HumanMessage(content=prompt)])
-    return f"### Topic: {query}\n{resp.content[0]["text"]}\n"  # For gemini
-    return f"### Topic: {query}\n{resp.content}\n"  # For gpt-oss-120b
+    return f"### Topic: {query}\n{resp.content[0]['text']}\n"  # For gemini
+    # return f"### Topic: {query}\n{resp.content}\n"  # For gpt-oss-120b
