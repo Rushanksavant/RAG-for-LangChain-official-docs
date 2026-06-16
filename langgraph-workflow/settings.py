@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     GROQ_API_KEY: SecretStr
 
     LANGSMITH_API_KEY: SecretStr
+    LANGSMITH_PROJECT: str = "LangGraph-RAG-Agent"
+    LANGSMITH_TRACING: bool
     
     
     max_input_chars: int = 1000  # User query should be at max 250 tokens
