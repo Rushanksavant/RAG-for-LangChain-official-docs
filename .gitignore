@@ -22,6 +22,7 @@ dev.md
 
 ## ignore vectordB
 data/qdrant_storage
+data/old_qdrant_storage
 
 ## ignore uploading model weights
 .fastembed/
@@ -30,3 +31,6 @@ __pycache__/
 
 ## due to settings.py import
 .src/rag_for_langchain_langgraph_official_docs.egg-info
+
+## ignore DeepEval config
+.deepeval/
