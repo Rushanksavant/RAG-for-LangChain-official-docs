@@ -15,7 +15,10 @@
 
 ## What it does
 
-Indexes the entire official LangChain documentation ecosystem (~27K chunks) into a hybrid vector database and exposes it through a multi-step LangGraph agent that plans, retrieves, and synthesizes answers — not just keyword matches.
+Indexes the entire official LangChain documentation ecosystem into a hybrid vector database and exposes it through a multi-step LangGraph agent that plans, retrieves, and synthesizes answers — not just keyword matches. Custom chunking used to retain docs code-blocks & tables neatly. Deployed links:<br>
+[App link 🦜](https://huggingface.co/spaces/Rushank/LangGraph-RAG-Agent) <br>
+[MCP Server 🤗](https://huggingface.co/spaces/Rushank/langchain-rag-mcp-server/tree/main) <br>
+[Qdrant Cloud Cluster ☁](https://a0303a21-3a71-4b02-9a89-e87030c451ab.us-east4-0.gcp.cloud.qdrant.io:6333/dashboard#/collections)
 
 ---
 
@@ -31,7 +34,7 @@ Indexes the entire official LangChain documentation ecosystem (~27K chunks) into
 |---|---|---|
 | **Chunking** | Parent-child hierarchy | Children give precise retrieval hits. Parents give LLM rich context. One chunk size forces a tradeoff — two sizes don't. |
 | **Embedding** | BGE-M3 | Single model for both dense semantic vectors and sparse keyword vectors. Handles code + technical terms well. 8,192 token input limit covers full doc sections. |
-| **Search** | Hybrid (dense + sparse) via RRF | Dense alone misses exact class names. Sparse alone misses semantic queries. RRF fusion gets both without tuning a weight parameter. |
+| **Search** | Hybrid (dense + sparse) via RRF | Dense alone misses exact class names. Sparse alone misses semantic queries. RRF fusion gets the best from both. |
 | **Vector DB** | Qdrant | Native hybrid search, Rust-speed, metadata filtering, free cloud tier, portable storage files. |
 | **Agent** | LangGraph | Clean map-reduce pattern for parallel sub-query retrieval. Conditional routing without spaghetti if/else. LangSmith tracing out of the box. |
 | **LLM** | Gemini 3.1 Flash Lite | 500 free req/day, 1M token context, Jan 2026 training cutoff — most current LangChain knowledge. |
@@ -51,11 +54,15 @@ Indexes the entire official LangChain documentation ecosystem (~27K chunks) into
 │
 ├── hf-space/                    # 🤗 Deployed: FastAPI + FastMCP retrieval server
 │   ├── server.py                # MCP tool endpoint with auth middleware
-│   └── retrieval_pipeline.py    # BGE-M3 embed → hybrid search → parent fetch
+│   ├── retrieval_pipeline.py    # BGE-M3 embed → hybrid search → parent fetch
+│   └── Dockerfile
 │
 ├── langgraph-workflow/          # 🤗 Deployed: Streamlit + LangGraph agent
 │   ├── agent.py                 # Graph: plan → retrieve → map → reduce → answer
-│   └── app.py                   # Streamlit chat UI
+|   ├── agent_contents/          # utilities, graphs and schemas
+|   ├── streamlit_contents/      # streamlit app working
+│   ├── app.py                   # Streamlit chat UI
+│   └── Dockerfile
 │
 ├── bin/                         # Shell scripts: data_pull.sh, chunking.sh, upsert_dB.sh
 └── docker/                      # Local Qdrant via Docker Compose
