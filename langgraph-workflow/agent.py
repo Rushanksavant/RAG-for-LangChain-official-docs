@@ -7,7 +7,7 @@ import json
 import logging
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chat_models import init_chat_model
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.memory import MemorySaver
@@ -24,10 +24,10 @@ logger = logging.getLogger("agent")
 
 # ── LLM setup ─────────────────────────────────────────────────────────────────
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-3.1-flash-lite", 
-    google_api_key=settings.GEMINI_API_KEY.get_secret_value(),
-    temperature=0.0)
+# llm = ChatGoogleGenerativeAI(
+#     model="gemini-3.1-flash-lite", 
+#     google_api_key=settings.GEMINI_API_KEY.get_secret_value(),
+#     temperature=0.0)
 
 # llm = init_chat_model(model='openai/gpt-oss-120b', model_provider='groq', 
 #                       temperature=0, api_key= settings.GROQ_API_KEY.get_secret_value())
@@ -37,13 +37,13 @@ llm = ChatGoogleGenerativeAI(
 # Single shared client for the lifetime of the process.
 # Re-created on ConnectionError by retrieve_contexts node.
 
-mcp_client = MultiServerMCPClient({
-    "rag-retrieval": {
-        "transport": "streamable_http",
-        "url": settings.SERVER_URL,
-        "headers": {"X-API-Key": settings.MCP_SECRET_KEY.get_secret_value()},
-    }
-})
+# mcp_client = MultiServerMCPClient({
+#     "rag-retrieval": {
+#         "transport": "streamable_http",
+#         "url": settings.SERVER_URL,
+#         "headers": {"X-API-Key": settings.MCP_SECRET_KEY.get_secret_value()},
+#     }
+# })
 
 # ── History helper ─────────────────────────────────────────────────────────────
 
@@ -54,8 +54,9 @@ def get_recent_history(history: list, max_exchanges: int = 3) -> list:
 
 # ── Node 1: plan_query ─────────────────────────────────────────────────────────
 
-async def plan_query(state: AgentGraphState) -> dict:
+async def plan_query(state: AgentGraphState, config: dict) -> dict:
     logger.info("plan_query: start")
+    llm = config["configurable"]["llm"]
 
     history  = get_recent_history(state.get("chat_history"))
     messages = [SystemMessage(content=PLANNER_PROMPT)] + history + [HumanMessage(content=state["user_input"])]
@@ -85,8 +86,9 @@ async def plan_query(state: AgentGraphState) -> dict:
 
 # ── Node 2: retrieve_contexts ──────────────────────────────────────────────────
 
-async def retrieve_contexts(state: AgentGraphState) -> dict:
+async def retrieve_contexts(state: AgentGraphState, config: dict) -> dict:
     logger.info("retrieve_contexts: start")
+    config["configurable"]["mcp_client"]
 
     # Fire all sub-queries in parallel (each returns {query: [chunks]})
     sub_queries = state["query_plan"].sub_queries
@@ -117,8 +119,10 @@ async def evaluate_context(state: AgentGraphState) -> dict:
 
 # ── Node 4: generate_subquery_answer ────────────────────────────────────────────────────
 
-async def generate_subquery_answer(state: AgentGraphState) -> dict:
+async def generate_subquery_answer(state: AgentGraphState, config: dict) -> dict:
     logger.info("generate_subquery_answer: start")
+    llm = config["configurable"]["llm"]
+
     subquery_contextList = state["retrieved_contexts"] 
 
     # Parallel processing using standard .items() unpacking
@@ -131,8 +135,9 @@ async def generate_subquery_answer(state: AgentGraphState) -> dict:
 
 # ── Node 5: generate_final_answer ────────────────────────────────────────────────────
 
-async def generate_final_answer(state: AgentGraphState) -> dict:
+async def generate_final_answer(state: AgentGraphState, config: dict) -> dict:
     logger.info("generate_final_answer: start")
+    llm = config["configurable"]["llm"]
 
     status             = state.get("status_mssg")[:]
     plan               = state["query_plan"]
