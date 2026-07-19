@@ -65,7 +65,7 @@ async def process_packet(llm: BaseLanguageModel, query: str, chunks: list) -> st
 
     GROUNDING RULES:
     1. Extract answers strictly from the context blocks provided.
-    2. If the context does not contain direct, explicit information to answer this sub-query completely, output exactly: "Insufficient documentation available for this sub-component."
+    2. If the context contains NO relevant information whatsoever for this sub-query, output: 'Insufficient documentation available for this sub-component.' If partial information exists, use it and note what is missing.
     3. Do not assume or extrapolate syntax based on other frameworks.
     4. Do not miss any detail that might directly/indirectly answer the sub-query
     5. Preserve:
@@ -76,5 +76,7 @@ async def process_packet(llm: BaseLanguageModel, query: str, chunks: list) -> st
     """
 
     resp = await llm.ainvoke([SystemMessage(content=ANSWER_PROMPT), HumanMessage(content=prompt)])
-    return f"### Topic: {query}\n{resp.content[0]['text']}\n"  # For gemini
+    raw = resp.content
+    answer = raw[0]["text"] if isinstance(raw, list) else raw
+    return f"### Topic: {query}\n{answer}\n"  # For gemini
     # return f"### Topic: {query}\n{resp.content}\n"  # For gpt-oss-120b
