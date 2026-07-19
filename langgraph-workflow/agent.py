@@ -9,7 +9,7 @@ import logging
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 # from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chat_models import init_chat_model
-from langchain_mcp_adapters.client import MultiServerMCPClient
+# from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, START, END
 
