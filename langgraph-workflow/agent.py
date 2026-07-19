@@ -180,7 +180,8 @@ async def generate_final_answer(state: AgentGraphState) -> dict:
     messages = [SystemMessage(content=ANSWER_PROMPT)] + chat_history + [HumanMessage(content=prompt)]
     
     resp = await llm.ainvoke(messages)
-    answer = resp.content[0]["text"] # For gemini
+    raw = resp.content 
+    answer = raw[0]["text"] if isinstance(raw, list) else raw # For Gemini
     # answer = resp.content            # For gpt-oss-120b
     
     status.append("Final answer generated")
