@@ -88,7 +88,7 @@ async def plan_query(state: AgentGraphState, config: dict) -> dict:
 
 async def retrieve_contexts(state: AgentGraphState, config: dict) -> dict:
     logger.info("retrieve_contexts: start")
-    config["configurable"]["mcp_client"]
+    mcp_client = config["configurable"]["mcp_client"]
 
     # Fire all sub-queries in parallel (each returns {query: [chunks]})
     sub_queries = state["query_plan"].sub_queries
