@@ -106,7 +106,7 @@ async def evaluate_context(state: AgentGraphState) -> dict:
     return {"context_sufficient": sufficient, "status_mssg": status}
 
 
-# ── Node 5: generate_subquery_answer ────────────────────────────────────────────────────
+# ── Node 4: generate_subquery_answer ────────────────────────────────────────────────────
 
 async def generate_subquery_answer(state: AgentGraphState) -> dict:
     logger.info("generate_subquery_answer: start")
@@ -120,7 +120,7 @@ async def generate_subquery_answer(state: AgentGraphState) -> dict:
     return {"mapped_insights": list(insights)}
 
 
-# ── Node 4: generate_final_answer ────────────────────────────────────────────────────
+# ── Node 5: generate_final_answer ────────────────────────────────────────────────────
 
 async def generate_final_answer(state: AgentGraphState) -> dict:
     logger.info("generate_final_answer: start")
@@ -192,7 +192,7 @@ async def generate_final_answer(state: AgentGraphState) -> dict:
     }
 
 
-# ── Node 5: guardrail ──────────────────────────────────────────────────────────
+# ── Node 6: guardrail ──────────────────────────────────────────────────────────
 
 async def end_with_guardrail(state: AgentGraphState) -> dict:
     msg = state["query_plan"].guardrail or "I'm sorry, but no relevant documentation could be retrieved to securely answer your question."
