@@ -114,6 +114,8 @@ PATH_A_RULES = """
     b. Only use class properties, import locations, or configuration schemas that are explicitly stated in the Research Insights.
     c. If imports or configurations are missing from the context, state them clearly in standard text after the code block, asking the user if they need further clarification.
 5. Write clean, standalone, functional code blocks.
+6. CRITICAL: If a Research Insight section says 'Insufficient documentation available', do NOT substitute your own knowledge for that section. Instead, tell the user 
+   explicitly what could not be found and ask them to rephrase. Never invent class names, import paths, or deprecation notices to fill gaps.
 """
 
 
