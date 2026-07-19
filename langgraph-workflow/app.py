@@ -33,7 +33,7 @@ MAX_ALLOWED_CHARS = 2000
 
 # ── 2. SIDEBAR METRICS & OPERATION CONTROLS ─────────────────────────────────
 st.sidebar.title("🛠️ Assistant Controls")
-st.sidebar.markdown("Manage your interactive documentation research terminal threads.")
+st.sidebar.markdown("This is a temporary chat session, will terminate on re-fresh.")
 st.sidebar.markdown(f"**Session Thread ID:**\n`{st.session_state.session_id}`")
 st.sidebar.markdown("---")
 
