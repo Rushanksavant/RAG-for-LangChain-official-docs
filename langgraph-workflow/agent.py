@@ -60,7 +60,16 @@ async def plan_query(state: AgentGraphState) -> dict:
     history  = get_recent_history(state.get("chat_history"))
     messages = [SystemMessage(content=PLANNER_PROMPT)] + history + [HumanMessage(content=state["user_input"])]
 
-    plan: QueryPlan = await llm.with_structured_output(QueryPlan, strict = True, method = "json_schema").ainvoke(messages)
+    # plan: QueryPlan = await llm.with_structured_output(QueryPlan, strict = True, method = "json_schema").ainvoke(messages)
+    try:
+        plan: QueryPlan = await llm.with_structured_output(QueryPlan, method="json_mode", include_raw=False).ainvoke(messages)
+    except Exception as e:
+        logger.error(f"plan_query structured output failed: {e}")
+        plan = QueryPlan(
+            translated_query=state["user_input"],
+            sub_queries=[state["user_input"]],
+            needs_retrieval=False,
+            guardrail="I encountered an error processing your query. Please try again in a few moments or try rephrasing.")
 
     logger.info(f"plan_query: guardrail={plan.guardrail!r}, needs_retrieval={plan.needs_retrieval}, sub_queries={plan.sub_queries}")
 
