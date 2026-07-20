@@ -10,9 +10,10 @@ class Settings(BaseSettings):
 
     GROQ_API_KEY: SecretStr
 
-    LANGSMITH_API_KEY: SecretStr
-    LANGSMITH_PROJECT: str = "LangGraph-RAG-Agent"
-    LANGSMITH_TRACING: bool
+    LANGCHAIN_API_KEY: SecretStr
+    LANGCHAIN_PROJECT: str = "LangGraph-RAG-Agent"
+    LANGCHAIN_TRACING_V2: bool
+    LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
     
     
     max_input_chars: int = 1000  # User query should be at max 250 tokens
