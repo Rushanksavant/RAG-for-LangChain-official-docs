@@ -16,7 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # (Modify this list if your agent uses other third-party utilities)
 RUN pip install --no-cache-dir \
     streamlit \
-    langsmith \
     langchain \
     langchain-core \
     langchain-groq \
