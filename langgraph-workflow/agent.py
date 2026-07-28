@@ -111,9 +111,18 @@ async def retrieve_contexts(state: AgentGraphState) -> dict:
     for packet in all_packets:
         subquery_contextList.update(packet)
 
-    logger.info(f"retrieve_contexts: {len(sub_queries) * 2} chunks from {len(sub_queries)} sub-queries")
+    # Status message
+    actual_chunk_count = sum(len(chunks) for chunks in subquery_contextList.values())
+    failed = sum(1 for chunks in subquery_contextList.values() if not chunks)
+    if failed == len(sub_queries):
+        status_msg = "⚠️ Retrieval failed for all sub-queries — MCP server unavailable"
+    elif failed > 0:
+        status_msg = f"⚠️ Retrieval partial — {len(sub_queries) - failed}/{len(sub_queries)} sub-queries succeeded ({actual_chunk_count} chunks)"
+    else:
+        status_msg = f"Retrieved {actual_chunk_count} chunks across {len(sub_queries)} sub-quer{'y' if len(sub_queries) == 1 else 'ies'}"
+    logger.info(f"retrieve_contexts: {actual_chunk_count} chunks from {len(sub_queries)} sub-queries ({failed} failed)")
+    status = [status_msg]
 
-    status = [f"Retrieved {len(sub_queries) * 2} context chunks"]
     return {"retrieved_contexts": subquery_contextList, "status_mssg": status}
 
 
@@ -121,12 +130,23 @@ async def retrieve_contexts(state: AgentGraphState) -> dict:
 
 async def evaluate_context(state: AgentGraphState) -> dict:
     logger.info("evaluate_context: start")
+    retrieved = state.get("retrieved_contexts", {})
 
     # Reranker disabled — presence check is the honest signal for now.
-    sufficient = len(state.get("retrieved_contexts").keys()) > 0
+    
+    # Status message
+    # Check if any sub-query actually got chunks back
+    total_chunks = sum(len(chunks) for chunks in retrieved.values())
+    sufficient = total_chunks > 0
 
-    status = state.get("status_mssg", []) + ["Context sufficient" if sufficient else "No context found"]
-    return {"context_sufficient": sufficient, "status_mssg": status}
+    if not retrieved:
+        status_msg = "No context retrieved — routing to guardrail"
+    elif not sufficient:
+        status_msg = "⚠️ All retrievals returned empty — MCP server may be down"
+    else:
+        status_msg = f"Context verified — {total_chunks} chunks available for generation"
+
+    return {"context_sufficient": sufficient, "status_mssg": [status_msg]}
 
 
 # ── Node 4: generate_subquery_answer ────────────────────────────────────────────────────
@@ -141,8 +161,11 @@ async def generate_subquery_answer(state: AgentGraphState) -> dict:
     insights = await asyncio.gather(*[
         process_packet(llm, query, chunks) for query, chunks in subquery_contextList.items()
     ])
+
+    # Status message
+    status = [f"Generating answers for {len(subquery_contextList)} sub-quer{'y' if len(subquery_contextList) == 1 else 'ies'}..."]
     
-    return {"mapped_insights": list(insights)}
+    return {"mapped_insights": list(insights), "status_mssg": status}
 
 
 # ── Node 5: generate_final_answer ────────────────────────────────────────────────────
@@ -151,7 +174,7 @@ async def generate_final_answer(state: AgentGraphState) -> dict:
     logger.info("generate_final_answer: start")
     llm = _get_llm()
 
-    status             = state.get("status_mssg")[:]
+    status             = [] # empty for the current turn
     plan               = state["query_plan"]
     mapped_insights    = state.get("mapped_insights")
     retrieved_contexts = state.get("retrieved_contexts")
@@ -223,7 +246,7 @@ async def generate_final_answer(state: AgentGraphState) -> dict:
 
 async def end_with_guardrail(state: AgentGraphState) -> dict:
     msg = state["query_plan"].guardrail or "I'm sorry, but no relevant documentation could be retrieved to securely answer your question."
-    status = state.get("status_mssg", []) + ["Guardrail triggered / Insufficient context"]
+    status = ["Guardrail triggered / Insufficient context"]
     logger.info(f"end_with_guardrail: {msg!r}")
     return {
         "final_response": msg,
