@@ -188,7 +188,7 @@ async def generate_final_answer(state: AgentGraphState) -> dict:
         Original User Query: {plan.translated_query} 
 
         Synthesize these researched components into a cohesive final answer.
-        Research Insights:
+        Retrieved Insights:
         {combined_insights}
 
         CRITICAL RULES:

@@ -104,17 +104,17 @@ Rules:
 
 
 PATH_A_RULES = """
-1. Base your synthesis strictly on the provided Research Insights above.
-2. If any of the Research Insights note that documentation was missing or insufficient for a component, 
+1. Base your synthesis strictly on the provided Retrieved Insights above.
+2. If any of the Retrieved Insights note that documentation was missing or insufficient for a component, 
   explicitly tell the user which parts you cannot find. Instead of inventing setup instructions, ask user to re-phrase his query.
 3. Before adding a 'Missing Details' or 'Insufficient Documentation' disclaimer, check if the required details (such as imports or class names) were already 
-  successfully provided in any other section of the provided Research Insights. If they were, omit the disclaimer.
+  successfully provided in any other section of the provided Retrieved Insights. If they were, omit the disclaimer.
 4. You can write custom code as per the requirement of user, but:
     a. Do not invent or assume class properties, import locations, or configuration schemas that are standard to langchain/langgraph/langsmith/deepagents framework.
-    b. Only use class properties, import locations, or configuration schemas that are explicitly stated in the Research Insights.
+    b. Only use class properties, import locations, or configuration schemas that are explicitly stated in the Retrieved Insights.
     c. If imports or configurations are missing from the context, state them clearly in standard text after the code block, asking the user if they need further clarification.
 5. Write clean, standalone, functional code blocks.
-6. CRITICAL: If a Research Insight section says 'Insufficient documentation available', do NOT substitute your own knowledge for that section. Instead, tell the user 
+6. CRITICAL: If a Retrieved Insight section says 'Insufficient documentation available', do NOT substitute your own knowledge for that section. Instead, tell the user 
    explicitly what could not be found and ask them to rephrase. Never invent class names, import paths, or deprecation notices to fill gaps.
 """
 
@@ -127,16 +127,16 @@ in the Context above, you must state: "I cannot find exact term/classes/framewor
   successfully provided in any other section of the provided Context. If they were, omit the disclaimer.
 4. You can write custom code as per the requirement of user, but:
     a. Do not invent or assume class properties, import locations, or configuration schemas that are standard to langchain/langgraph/langsmith/deepagents framework.
-    b. Only use class properties, import locations, or configuration schemas that are explicitly stated in the Research Insights.
+    b. Only use class properties, import locations, or configuration schemas that are explicitly stated in the Retrieved Insights.
     c. If imports or configurations are missing from the context, state them clearly in standard text after the code block, asking the user if they need further clarification.
 5. Write clean, standalone, functional code blocks.
 """
 
-# c. If Research Insights do not provide these information, mention in response which things are missing by asking user to explicitly ask for the required.
-            # Eg; - Let's say your code needs to import deepagent, but provided Research Insights might not provide this info
+# c. If Retrieved Insights do not provide these information, mention in response which things are missing by asking user to explicitly ask for the required.
+            # Eg; - Let's say your code needs to import deepagent, but provided Retrieved Insights might not provide this info
             #     - Then in your custom code add comment `# <--- import deepagent framework here`
             #     - And in the end of your response, you can ask user if he needs help, like for our example you can ask you user "let me know if you need more info about deepagent import"
-            #     - But, if Research Insights already provides this info no need to ask as above, you can just end with let me know if there is anything else you might need help with.
+            #     - But, if Retrieved Insights already provides this info no need to ask as above, you can just end with let me know if there is anything else you might need help with.
 
 
 PATH_C_RULES = """
