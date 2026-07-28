@@ -15,36 +15,47 @@ async def fetch_one(mcp_client: MultiServerMCPClient, query: str) -> list[dict]:
 
         This function will be used to async retrieve chunks
         for multiple sub-queries - in the retrieve-contexts node.
-        """
-        try:
-            tools  = await mcp_client.get_tools()
-            tool   = next(t for t in tools if t.name == "retrieve_context")
-            result = await tool.ainvoke({"query": query, "top_k_child": 15, "top_k_parent": 2})
-            
-            # 1. Unpack the MCP tool content block envelope
-            if isinstance(result, list) and len(result) > 0:
-                first_item = result[0]
-                if isinstance(first_item, dict) and "text" in first_item:
-                    result = first_item["text"]
-                elif hasattr(first_item, "text"):
-                    result = first_item.text
 
-            # 2. Safely parse the double-serialized inner JSON string
-            if isinstance(result, str):
-                try:
-                    parsed = json.loads(result)
-                    raw_chunks = parsed if isinstance(parsed, list) else [parsed]
-                except json.JSONDecodeError:
-                    raw_chunks = [{"text": result}]
-            else:
-                raw_chunks = result if isinstance(result, list) else [result]
-                    
-            # 3. return as a {query: [retreived-chunks text]} packet
-            return {query: [c["text"] for c in raw_chunks]}
-        
-        except Exception as e:
-            logger.error(f"Retrieval failed for '{query}': {e}")
-            return {query: []}
+        Despite adding keep_alive in HF-Space, it might sleep. Hence,
+        we need a retry with backoff. Current set to 3 retries with 
+        3 second intervals. This gives HF-space 9 secs to wake-up.
+        """
+        max_retries = 3
+        retry_delay = 3  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                tools  = await mcp_client.get_tools()
+                tool   = next(t for t in tools if t.name == "retrieve_context")
+                result = await tool.ainvoke({"query": query, "top_k_child": 15, "top_k_parent": 2})
+
+                # ... rest of existing unpacking logic unchanged ...
+                if isinstance(result, list) and len(result) > 0:
+                    first_item = result[0]
+                    if isinstance(first_item, dict) and "text" in first_item:
+                        result = first_item["text"]
+                    elif hasattr(first_item, "text"):
+                        result = first_item.text
+
+                if isinstance(result, str):
+                    try:
+                        parsed = json.loads(result)
+                        raw_chunks = parsed if isinstance(parsed, list) else [parsed]
+                    except json.JSONDecodeError:
+                        raw_chunks = [{"text": result}]
+                else:
+                    raw_chunks = result if isinstance(result, list) else [result]
+
+                return {query: [c["text"] for c in raw_chunks]}
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Retrieval attempt {attempt + 1} failed for '{query}': {e} — retrying in {retry_delay}s")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # exponential backoff: 2s, 4s
+                else:
+                    logger.error(f"Retrieval failed after {max_retries} attempts for '{query}': {e}")
+                    return {query: []}
         
 
 from langchain_core.messages import HumanMessage, SystemMessage
