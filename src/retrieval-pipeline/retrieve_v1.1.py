@@ -73,8 +73,8 @@ class RetrievalPipeline:
             sys.exit(1)
 
         print("\nSTAGE 2: Loading Cross-Encoder Reranker...")
-        # self.reranker = FlagReranker('BAAI/bge-reranker-base', use_fp16=is_cuda)
-        self.reranker = TextCrossEncoder(model_name="BAAI/bge-reranker-base")
+        # self.reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=is_cuda)
+        self.reranker = TextCrossEncoder(model_name="BAAI/bge-reranker-base") ## needs to be changed (less input token limit)
         print("✅ STAGE 2 COMPLETE: Reranker operational.")
         
         print("\nSTAGE 3: Connecting to Qdrant Docker Engine...")
