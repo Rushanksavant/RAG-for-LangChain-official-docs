@@ -36,5 +36,4 @@ __pycache__/
 .deepeval/
 
 
-src/retrieval-pipeline/retrieve_v1.1.py
 dB-maintenance/README.md
