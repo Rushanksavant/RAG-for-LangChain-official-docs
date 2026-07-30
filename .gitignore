@@ -34,3 +34,7 @@ __pycache__/
 
 ## ignore DeepEval config
 .deepeval/
+
+
+src/retrieval-pipeline/retrieve_v1.1.py
+dB-maintenance/README.md
