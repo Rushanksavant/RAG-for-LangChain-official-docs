@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG Eval Results Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  /* ── Tokens ─────────────────────────────────────────── */
+  :root {
+    --bg:          #0f1117;
+    --surface:     #181c27;
+    --surface2:    #1f2435;
+    --border:      #2a3050;
+    --border-soft: #222840;
+    --text:        #e2e8f0;
+    --text-muted:  #7c8db5;
+    --text-dim:    #4a5578;
+    --accent:      #6c8ef5;
+    --accent-soft: rgba(108,142,245,.12);
+    --faith:       #6ee7b7;
+    --recall:      #fbbf24;
+    --correct:     #f472b6;
+    --good:        #6ee7b7;
+    --warn:        #fbbf24;
+    --bad:         #f87171;
+    --radius:      10px;
+    --radius-sm:   6px;
+    --mono:        'JetBrains Mono', 'Fira Mono', 'Courier New', monospace;
+  }
+
+  /* ── Reset & Base ───────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  a { color: var(--accent); }
+
+  /* ── Layout ─────────────────────────────────────────── */
+  .page { max-width: 1280px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* ── Header ─────────────────────────────────────────── */
+  .site-header {
+    border-bottom: 1px solid var(--border-soft);
+    padding: 22px 0 20px;
+    margin-bottom: 40px;
+  }
+  .site-header h1 {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    color: var(--text);
+  }
+  .site-header h1 span {
+    color: var(--accent);
+  }
+  .header-meta {
+    display: flex;
+    gap: 20px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+  .meta-chip {
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--surface2);
+    border: 1px solid var(--border-soft);
+    border-radius: 20px;
+    padding: 3px 10px;
+  }
+
+  /* ── Section ─────────────────────────────────────────── */
+  .section {
+    margin-bottom: 56px;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-soft);
+  }
+  .subsection-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 14px;
+  }
+
+  /* ── KPI Cards ──────────────────────────────────────── */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .kpi-card.faith::before { background: var(--faith); }
+  .kpi-card.recall::before { background: var(--recall); }
+  .kpi-card.correct::before { background: var(--correct); }
+  .kpi-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .kpi-value {
+    font-size: 32px;
+    font-weight: 700;
+    font-family: var(--mono);
+    letter-spacing: -1px;
+    line-height: 1;
+  }
+  .kpi-card.faith .kpi-value { color: var(--faith); }
+  .kpi-card.recall .kpi-value { color: var(--recall); }
+  .kpi-card.correct .kpi-value { color: var(--correct); }
+  .kpi-bar {
+    margin-top: 12px;
+    height: 3px;
+    background: var(--surface2);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .kpi-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.8s cubic-bezier(.4,0,.2,1);
+  }
+  .faith .kpi-bar-fill { background: var(--faith); }
+  .recall .kpi-bar-fill { background: var(--recall); }
+  .correct .kpi-bar-fill { background: var(--correct); }
+
+  /* ── Chart ───────────────────────────────────────────── */
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 24px;
+  }
+  .chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .chart-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+  #line-chart { width: 100%; height: 300px; }
+  .chart-tooltip {
+    position: fixed;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 999;
+    min-width: 180px;
+  }
+  .tooltip-title { font-weight: 600; margin-bottom: 6px; color: var(--text); }
+  .tooltip-row { display: flex; justify-content: space-between; gap: 16px; color: var(--text-muted); }
+  .tooltip-row span:last-child { font-family: var(--mono); }
+
+  /* ── Sample Lookup ───────────────────────────────────── */
+  .lookup-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .lookup-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .num-input {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    padding: 8px 14px;
+    width: 110px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .num-input:focus { border-color: var(--accent); }
+  .btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 8px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-ghost {
+    background: var(--surface2);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  .input-hint { font-size: 11px; color: var(--text-dim); }
+
+  /* ── Detail Grid ─────────────────────────────────────── */
+  .detail-wrapper {
+    position: relative;
+    display: none;
+  }
+  .detail-wrapper.visible { display: block; }
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    margin-top: 4px;
+  }
+  @media (max-width: 900px) {
+    .detail-grid { grid-template-columns: 1fr; }
+  }
+  .detail-card {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .detail-card-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-soft);
+    padding-bottom: 10px;
+  }
+  .detail-field { display: flex; flex-direction: column; gap: 4px; }
+  .field-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+  }
+  .field-value { font-size: 13px; color: var(--text); }
+  .field-value.mono { font-family: var(--mono); font-size: 12px; }
+  .scroll-box {
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-soft);
+    padding: 12px;
+    max-height: 220px;
+    overflow-y: auto;
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--text);
+    flex: 1;
+  }
+  .scroll-box::-webkit-scrollbar { width: 4px; }
+  .scroll-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .score-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+  .score-pill {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    background: var(--surface2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: 8px 14px;
+    flex: 1;
+    min-width: 80px;
+  }
+  .pill-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
+  .pill-value {
+    font-size: 18px;
+    font-weight: 700;
+    font-family: var(--mono);
+  }
+  .qtype-badge {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 20px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .path-tag {
+    display: inline-block;
+    background: var(--surface2);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    margin: 2px 0;
+  }
+
+  .close-btn {
+    position: absolute;
+    top: 0; right: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    z-index: 10;
+  }
+  .close-btn:hover { background: var(--surface); color: var(--text); border-color: var(--accent); }
+
+  /* ── No-ret Dropdown ─────────────────────────────────── */
+  .dropdown-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .styled-select {
+    flex: 1;
+    min-width: 220px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 13px;
+    padding: 8px 14px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .styled-select:focus { border-color: var(--accent); }
+
+  .no-ret-detail {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: none;
+    position: relative;
+  }
+  .no-ret-detail.visible { display: block; }
+  .no-ret-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 14px;
+  }
+  @media (max-width: 700px) {
+    .no-ret-grid { grid-template-columns: 1fr; }
+  }
+  .cat-badge {
+    display: inline-block;
+    border-radius: 20px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .cat-errored { background: rgba(248,113,113,.15); color: var(--bad); }
+  .cat-flagged  { background: rgba(251,191,36,.12); color: var(--warn); }
+  .cat-unflagged{ background: rgba(110,231,183,.12); color: var(--good); }
+
+  .error-box {
+    background: rgba(248,113,113,.08);
+    border: 1px solid rgba(248,113,113,.25);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--bad);
+  }
+
+  /* ── Knowledge Graph ─────────────────────────────────── */
+  .kg-section { }
+  .kg-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .kg-stat {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    text-align: center;
+  }
+  .kg-stat-value {
+    font-size: 26px;
+    font-weight: 700;
+    font-family: var(--mono);
+    color: var(--accent);
+    line-height: 1;
+  }
+  .kg-stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+  .kg-main {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .kg-main { grid-template-columns: 1fr; }
+  }
+  .kg-canvas-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    overflow: hidden;
+    position: relative;
+  }
+  .kg-controls {
+    position: absolute;
+    top: 12px; right: 12px;
+    display: flex;
+    gap: 6px;
+    z-index: 10;
+  }
+  .kg-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: var(--radius-sm);
+    padding: 5px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .kg-btn:hover { border-color: var(--accent); color: var(--text); }
+  #kg-svg {
+    display: block;
+    width: 100%;
+    height: 520px;
+  }
+
+  .kg-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .kg-panel {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .kg-panel-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .fw-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+  .fw-label { width: 80px; color: var(--text-muted); text-transform: capitalize; }
+  .fw-bar-wrap { flex: 1; height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .fw-bar-fill { height: 100%; border-radius: 3px; }
+  .fw-count { width: 26px; text-align: right; font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+
+  .node-info-box {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+  .node-info-box.has-data { color: var(--text); }
+  .node-summary {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    line-height: 1.6;
+    border-top: 1px solid var(--border-soft);
+    padding-top: 8px;
+  }
+
+  .fw-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .fw-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .fw-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Loading/Error ───────────────────────────────────── */
+  .state-msg {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  .error-msg {
+    background: rgba(248,113,113,.08);
+    border: 1px solid rgba(248,113,113,.2);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    color: var(--bad);
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+
+  /* ── Divider ─────────────────────────────────────────── */
+  .sub-divider {
+    border: none;
+    border-top: 1px solid var(--border-soft);
+    margin: 32px 0;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Header ── -->
+  <header class="site-header">
+    <h1>RAG Eval <span>Results</span> Dashboard</h1>
+    <div class="header-meta">
+      <span class="meta-chip" id="chip-retrieval">117 retrieval samples</span>
+      <span class="meta-chip" id="chip-no-retrieval">28 no-retrieval samples</span>
+      <span class="meta-chip">RAGAS eval · LangChain / LangGraph / LangSmith / DeepAgents</span>
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════════
+       Section 1 – Retrieval Eval Results
+  ════════════════════════════════════════════ -->
+  <section class="section">
+    <h2 class="section-title">Section 1 &nbsp;·&nbsp; Eval Results for when Retrieval was performed</h2>
+
+    <!-- KPI Cards -->
+    <div class="kpi-row" id="kpi-row">
+      <div class="kpi-card faith">
+        <div class="kpi-label">Mean Faithfulness</div>
+        <div class="kpi-value" id="kpi-faith">—</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill" id="bar-faith" style="width:0%"></div></div>
+      </div>
+      <div class="kpi-card recall">
+        <div class="kpi-label">Mean Context Recall</div>
+        <div class="kpi-value" id="kpi-recall">—</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill" id="bar-recall" style="width:0%"></div></div>
+      </div>
+      <div class="kpi-card correct">
+        <div class="kpi-label">Mean Answer Correctness</div>
+        <div class="kpi-value" id="kpi-correct">—</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill" id="bar-correct" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <!-- Line Chart -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <span class="chart-title">Per-Sample Metric Scores (117 samples)</span>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--faith)"></div>Faithfulness</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--recall)"></div>Context Recall</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--correct)"></div>Answer Correctness</div>
+        </div>
+      </div>
+      <svg id="line-chart"></svg>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       Section 2 – Detailed Query Views
+  ════════════════════════════════════════════ -->
+  <section class="section">
+    <h2 class="section-title">Section 2 &nbsp;·&nbsp; Query Detail Views</h2>
+
+    <!-- Sub-section 1: Retrieval samples -->
+    <div class="subsection-title">View queries in detail on which Retrieval was performed</div>
+
+    <div class="lookup-bar">
+      <span class="lookup-label">Sample index:</span>
+      <input type="number" class="num-input" id="sample-idx" min="0" max="116" placeholder="0–116" />
+      <button class="btn" id="view-sample-btn" onclick="viewSample()">View Sample</button>
+      <span class="input-hint" id="lookup-hint">Enter a number between 0 and 116</span>
+    </div>
+
+    <div id="lookup-error" class="error-msg" style="display:none"></div>
+
+    <div class="detail-wrapper" id="detail-wrapper">
+      <button class="close-btn" onclick="closeDetail()" title="Close">✕</button>
+      <div class="detail-grid">
+
+        <!-- Card A: Query & Scores -->
+        <div class="detail-card">
+          <div class="detail-card-title">A &nbsp;·&nbsp; About Query &amp; Scores</div>
+          <div class="detail-field">
+            <span class="field-label">User Input</span>
+            <span class="field-value" id="d-user-input"></span>
+          </div>
+          <div class="detail-field">
+            <span class="field-label">Question Type</span>
+            <span class="field-value"><span class="qtype-badge" id="d-qtype"></span></span>
+          </div>
+          <div class="detail-field">
+            <span class="field-label">Metric Scores</span>
+            <div class="score-pills">
+              <div class="score-pill">
+                <span class="pill-label">Faithfulness</span>
+                <span class="pill-value" id="d-faith" style="color:var(--faith)">—</span>
+              </div>
+              <div class="score-pill">
+                <span class="pill-label">Context Recall</span>
+                <span class="pill-value" id="d-recall" style="color:var(--recall)">—</span>
+              </div>
+              <div class="score-pill">
+                <span class="pill-label">Correctness</span>
+                <span class="pill-value" id="d-correct" style="color:var(--correct)">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card B: RAG Agent -->
+        <div class="detail-card">
+          <div class="detail-card-title">B &nbsp;·&nbsp; RAG Agent</div>
+          <div class="detail-field">
+            <span class="field-label">Agent Response</span>
+            <div class="scroll-box" id="d-agent-response"></div>
+          </div>
+          <div class="detail-field">
+            <span class="field-label">Graph Path</span>
+            <div id="d-status-mssg"></div>
+          </div>
+        </div>
+
+        <!-- Card C: RAGAS Ground Truth -->
+        <div class="detail-card">
+          <div class="detail-card-title">C &nbsp;·&nbsp; RAGAS Ground Truth</div>
+          <div class="detail-field">
+            <span class="field-label">Reference Answer</span>
+            <div class="scroll-box" id="d-reference"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="sub-divider"/>
+
+    <!-- Sub-section 2: No-retrieval samples -->
+    <div class="subsection-title">View queries in detail on which Retrieval was refused by Agent</div>
+
+    <div class="dropdown-row">
+      <select class="styled-select" id="no-ret-select" onchange="viewNoRetSample()">
+        <option value="">— Select a query —</option>
+      </select>
+    </div>
+
+    <div class="no-ret-detail" id="no-ret-detail">
+      <button class="close-btn" onclick="closeNoRet()" title="Close">✕</button>
+
+      <div class="detail-field" style="margin-bottom:12px">
+        <span class="field-label">User Input</span>
+        <span class="field-value" id="nr-user-input"></span>
+      </div>
+
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+        <div class="detail-field">
+          <span class="field-label">Question Type</span>
+          <span class="qtype-badge" id="nr-qtype"></span>
+        </div>
+        <div class="detail-field" style="margin-left:auto">
+          <span class="field-label">Category</span>
+          <span class="cat-badge" id="nr-category"></span>
+        </div>
+      </div>
+
+      <div class="no-ret-grid">
+        <div class="detail-field">
+          <span class="field-label">Agent Response</span>
+          <div class="scroll-box" id="nr-agent-response"></div>
+        </div>
+        <div class="detail-field">
+          <span class="field-label">RAGAS Ground Truth</span>
+          <div class="scroll-box" id="nr-reference"></div>
+        </div>
+        <div class="detail-field">
+          <span class="field-label">Graph Path</span>
+          <div id="nr-status-mssg"></div>
+        </div>
+        <div class="detail-field" id="nr-error-wrap">
+          <span class="field-label">Error</span>
+          <div class="error-box" id="nr-error"></div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       Section 3 – Knowledge Graph
+  ════════════════════════════════════════════ -->
+  <section class="section kg-section">
+    <h2 class="section-title">Section 3 &nbsp;·&nbsp; RAGAS Generated Knowledge Graph</h2>
+
+    <div class="kg-stats" id="kg-stats">
+      <div class="kg-stat"><div class="kg-stat-value" id="ks-nodes">—</div><div class="kg-stat-label">Nodes</div></div>
+      <div class="kg-stat"><div class="kg-stat-value" id="ks-rels">—</div><div class="kg-stat-label">Relationships</div></div>
+      <div class="kg-stat"><div class="kg-stat-value" id="ks-entities">—</div><div class="kg-stat-label">Unique Entities</div></div>
+      <div class="kg-stat"><div class="kg-stat-value" id="ks-themes">—</div><div class="kg-stat-label">Unique Themes</div></div>
+    </div>
+
+    <div class="kg-main">
+      <div class="kg-canvas-wrap">
+        <div class="kg-controls">
+          <button class="kg-btn" onclick="resetZoom()">Reset</button>
+          <button class="kg-btn" onclick="toggleLabels()">Labels</button>
+        </div>
+        <svg id="kg-svg"></svg>
+      </div>
+
+      <div class="kg-sidebar">
+        <!-- Framework breakdown -->
+        <div class="kg-panel">
+          <div class="kg-panel-title">Nodes by Framework</div>
+          <div id="fw-bars"></div>
+          <div class="fw-legend" id="fw-legend"></div>
+        </div>
+
+        <!-- Selected node info -->
+        <div class="kg-panel">
+          <div class="kg-panel-title">Node Inspector</div>
+          <div class="node-info-box" id="node-info">
+            Click any node to inspect it.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /page -->
+
+<!-- Tooltip -->
+<div class="chart-tooltip" id="chart-tooltip"></div>
+
+<script>
+// ════════════════════════════════════════════════════════
+// Utilities
+// ════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const fmt = v => (v === null || v === undefined) ? 'N/A' : (+v).toFixed(3);
+const scoreColor = v => {
+  if (v === null || v === undefined) return 'var(--text-dim)';
+  if (v >= 0.7) return 'var(--good)';
+  if (v >= 0.4) return 'var(--warn)';
+  return 'var(--bad)';
+};
+
+function renderPathTags(statusArr) {
+  if (!statusArr || !Array.isArray(statusArr) || statusArr.length === 0) {
+    return '<span style="color:var(--text-dim);font-size:12px">—</span>';
+  }
+  return statusArr.map(s => `<span class="path-tag">${s}</span>`).join(' → ');
+}
+
+// ════════════════════════════════════════════════════════
+// Section 1 – KPIs
+// ════════════════════════════════════════════════════════
+async function loadKPIs() {
+  const data = await fetch('/api/kpis').then(r => r.json());
+  const set = (id, barId, val) => {
+    $(id).textContent = fmt(val);
+    $(barId).style.width = (val * 100).toFixed(1) + '%';
+  };
+  set('kpi-faith',   'bar-faith',   data.faithfulness);
+  set('kpi-recall',  'bar-recall',  data.context_recall);
+  set('kpi-correct', 'bar-correct', data.answer_correctness);
+}
+
+// ════════════════════════════════════════════════════════
+// Section 1 – Line Chart (D3)
+// ════════════════════════════════════════════════════════
+async function loadChart() {
+  const raw = await fetch('/api/chart_data').then(r => r.json());
+  const svgEl = $('line-chart');
+  const rect = svgEl.parentElement.getBoundingClientRect();
+  const W = rect.width || 800;
+  const H = 300;
+  const margin = { top: 16, right: 20, bottom: 36, left: 44 };
+  const w = W - margin.left - margin.right;
+  const h = H - margin.top - margin.bottom;
+
+  const svg = d3.select('#line-chart')
+    .attr('viewBox', `0 0 ${W} ${H}`)
+    .attr('preserveAspectRatio', 'xMidYMid meet');
+
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const x = d3.scaleLinear().domain([0, 116]).range([0, w]);
+  const y = d3.scaleLinear().domain([0, 1]).range([h, 0]);
+
+  // Grid lines
+  g.append('g').attr('class', 'grid')
+    .selectAll('line').data(y.ticks(5)).enter()
+    .append('line')
+    .attr('x1', 0).attr('x2', w)
+    .attr('y1', d => y(d)).attr('y2', d => y(d))
+    .attr('stroke', '#2a3050').attr('stroke-dasharray', '3 3');
+
+  // Axes
+  g.append('g').attr('transform', `translate(0,${h})`)
+    .call(d3.axisBottom(x).ticks(10).tickSize(0).tickPadding(8))
+    .call(ax => {
+      ax.select('.domain').attr('stroke', '#2a3050');
+      ax.selectAll('text').attr('fill', '#4a5578').attr('font-size', '11');
+    });
+
+  g.append('g')
+    .call(d3.axisLeft(y).ticks(5).tickSize(-w).tickFormat(d3.format('.1f')))
+    .call(ax => {
+      ax.select('.domain').remove();
+      ax.selectAll('.tick line').attr('stroke', '#2a3050').attr('stroke-dasharray', '3 3');
+      ax.selectAll('text').attr('fill', '#4a5578').attr('font-size', '11');
+    });
+
+  const metrics = [
+    { key: 'faithfulness',       color: 'var(--faith)'   },
+    { key: 'context_recall',     color: 'var(--recall)'  },
+    { key: 'answer_correctness', color: 'var(--correct)' },
+  ];
+
+  const line = d3.line()
+    .defined(d => d !== null)
+    .x((d, i) => x(i))
+    .y(d => y(d))
+    .curve(d3.curveMonotoneX);
+
+  metrics.forEach(m => {
+    const vals = raw.map(d => d[m.key]);
+    g.append('path')
+      .datum(vals)
+      .attr('fill', 'none')
+      .attr('stroke', m.color)
+      .attr('stroke-width', 1.5)
+      .attr('opacity', 0.85)
+      .attr('d', line);
+  });
+
+  // Hover overlay
+  const tooltip = $('chart-tooltip');
+  const overlay = g.append('rect')
+    .attr('width', w).attr('height', h)
+    .attr('fill', 'transparent')
+    .attr('cursor', 'crosshair');
+
+  const vline = g.append('line')
+    .attr('y1', 0).attr('y2', h)
+    .attr('stroke', '#4a5578').attr('stroke-width', 1)
+    .attr('stroke-dasharray', '4 3').attr('opacity', 0);
+
+  overlay.on('mousemove', function(event) {
+    const [mx] = d3.pointer(event);
+    const idx = Math.round(x.invert(mx));
+    if (idx < 0 || idx > 116) return;
+    const row = raw[idx];
+    if (!row) return;
+    vline.attr('x1', x(idx)).attr('x2', x(idx)).attr('opacity', 1);
+    tooltip.style.opacity = '1';
+    tooltip.style.left = (event.clientX + 14) + 'px';
+    tooltip.style.top  = (event.clientY - 10) + 'px';
+    tooltip.innerHTML = `
+      <div class="tooltip-title">Sample #${idx}</div>
+      <div class="tooltip-row"><span>Faithfulness</span><span style="color:var(--faith)">${fmt(row.faithfulness)}</span></div>
+      <div class="tooltip-row"><span>Context Recall</span><span style="color:var(--recall)">${fmt(row.context_recall)}</span></div>
+      <div class="tooltip-row"><span>Ans Correctness</span><span style="color:var(--correct)">${fmt(row.answer_correctness)}</span></div>`;
+  });
+  overlay.on('mouseleave', () => {
+    tooltip.style.opacity = '0';
+    vline.attr('opacity', 0);
+  });
+}
+
+// ════════════════════════════════════════════════════════
+// Section 2a – Sample Lookup
+// ════════════════════════════════════════════════════════
+async function viewSample() {
+  const raw = $('sample-idx').value.trim();
+  const idx = parseInt(raw, 10);
+  $('lookup-error').style.display = 'none';
+
+  if (raw === '' || isNaN(idx) || idx < 0 || idx > 116) {
+    $('lookup-error').textContent = 'Please enter a valid index between 0 and 116.';
+    $('lookup-error').style.display = 'block';
+    $('detail-wrapper').classList.remove('visible');
+    return;
+  }
+
+  $('view-sample-btn').disabled = true;
+  try {
+    const res = await fetch(`/api/sample/${idx}`);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.description || 'Not found');
+    }
+    const d = await res.json();
+
+    $('d-user-input').textContent = d.user_input;
+    $('d-qtype').textContent = d.question_type.replace(/_/g,' ');
+    $('d-faith').textContent = fmt(d.faithfulness);
+    $('d-faith').style.color = scoreColor(d.faithfulness);
+    $('d-recall').textContent = fmt(d.context_recall);
+    $('d-recall').style.color = scoreColor(d.context_recall);
+    $('d-correct').textContent = fmt(d.answer_correctness);
+    $('d-correct').style.color = scoreColor(d.answer_correctness);
+
+    $('d-agent-response').textContent = d.agent_response || '(no response)';
+    $('d-reference').textContent = d.reference || '(no reference)';
+
+    let statusArr = d.status_mssg;
+    if (typeof statusArr === 'string') { try { statusArr = JSON.parse(statusArr); } catch {} }
+    $('d-status-mssg').innerHTML = renderPathTags(Array.isArray(statusArr) ? statusArr : [statusArr]);
+
+    $('detail-wrapper').classList.add('visible');
+    $('detail-wrapper').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch(e) {
+    $('lookup-error').textContent = e.message;
+    $('lookup-error').style.display = 'block';
+    $('detail-wrapper').classList.remove('visible');
+  } finally {
+    $('view-sample-btn').disabled = false;
+  }
+}
+
+function closeDetail() {
+  $('detail-wrapper').classList.remove('visible');
+}
+
+$('sample-idx').addEventListener('keydown', e => { if (e.key === 'Enter') viewSample(); });
+
+// ════════════════════════════════════════════════════════
+// Section 2b – No-retrieval dropdown
+// ════════════════════════════════════════════════════════
+let noRetData = [];
+
+async function loadNoRetSamples() {
+  noRetData = await fetch('/api/no_retrieval_samples').then(r => r.json());
+  const sel = $('no-ret-select');
+  noRetData.forEach((s, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    const label = s.user_input.length > 80 ? s.user_input.slice(0, 80) + '…' : s.user_input;
+    const catEmoji = s.category === 'errored' ? '⚠️' : s.category === 'flagged' ? '🚫' : '💬';
+    opt.textContent = `${catEmoji} ${label}`;
+    sel.appendChild(opt);
+  });
+}
+
+function viewNoRetSample() {
+  const sel = $('no-ret-select');
+  if (!sel.value) { $('no-ret-detail').classList.remove('visible'); return; }
+  const d = noRetData[parseInt(sel.value, 10)];
+
+  $('nr-user-input').textContent = d.user_input;
+  $('nr-qtype').textContent = d.question_type.replace(/_/g,' ');
+
+  const catEl = $('nr-category');
+  catEl.textContent = d.category;
+  catEl.className = 'cat-badge cat-' + d.category;
+
+  $('nr-agent-response').textContent = d.agent_response || '(no response)';
+  $('nr-reference').textContent = d.reference || '(no reference)';
+
+  let statusArr = d.status_mssg;
+  if (typeof statusArr === 'string') { try { statusArr = JSON.parse(statusArr); } catch {} }
+  $('nr-status-mssg').innerHTML = renderPathTags(Array.isArray(statusArr) ? statusArr : (statusArr ? [statusArr] : []));
+
+  const errWrap = $('nr-error-wrap');
+  if (d.error && d.error !== 'None') {
+    $('nr-error').textContent = d.error;
+    errWrap.style.display = 'block';
+  } else {
+    errWrap.style.display = 'none';
+  }
+
+  $('no-ret-detail').classList.add('visible');
+}
+
+function closeNoRet() {
+  $('no-ret-detail').classList.remove('visible');
+  $('no-ret-select').value = '';
+}
+
+// ════════════════════════════════════════════════════════
+// Section 3 – Knowledge Graph (D3 Force)
+// ════════════════════════════════════════════════════════
+const FW_COLORS = {
+  langchain:  '#6c8ef5',
+  langgraph:  '#6ee7b7',
+  langsmith:  '#fbbf24',
+  deepagents: '#f472b6',
+  unknown:    '#4a5578',
+};
+
+let kgSimulation, kgZoom, showLabels = false, kgSvgRoot;
+
+async function loadKG() {
+  const data = await fetch('/api/knowledge_graph').then(r => r.json());
+
+  // Stats
+  const s = data.stats;
+  $('ks-nodes').textContent    = s.total_nodes;
+  $('ks-rels').textContent     = s.total_relationships;
+  $('ks-entities').textContent = s.unique_entities;
+  $('ks-themes').textContent   = s.unique_themes;
+
+  // Framework bars
+  const maxFw = Math.max(...Object.values(s.nodes_by_framework));
+  const fwHTML = Object.entries(s.nodes_by_framework)
+    .sort((a,b) => b[1]-a[1])
+    .map(([fw, cnt]) => `
+      <div class="fw-row">
+        <span class="fw-label">${fw}</span>
+        <div class="fw-bar-wrap"><div class="fw-bar-fill" style="width:${(cnt/maxFw*100).toFixed(1)}%;background:${FW_COLORS[fw]||FW_COLORS.unknown}"></div></div>
+        <span class="fw-count">${cnt}</span>
+      </div>`).join('');
+  $('fw-bars').innerHTML = fwHTML;
+
+  const legendHTML = Object.entries(FW_COLORS).filter(([fw]) => fw !== 'unknown').map(([fw, col]) => `
+    <div class="fw-legend-item"><div class="fw-dot" style="background:${col}"></div>${fw}</div>`).join('');
+  $('fw-legend').innerHTML = legendHTML;
+
+  // Build force graph
+  buildForceGraph(data.nodes, data.links);
+}
+
+function buildForceGraph(nodes, links) {
+  const svgEl = $('kg-svg');
+  const W = svgEl.clientWidth || 700;
+  const H = 520;
+
+  const svg = d3.select('#kg-svg')
+    .attr('viewBox', `0 0 ${W} ${H}`)
+    .style('background', 'var(--surface)');
+
+  kgSvgRoot = svg;
+
+  kgZoom = d3.zoom().scaleExtent([0.2, 4]).on('zoom', e => {
+    container.attr('transform', e.transform);
+  });
+  svg.call(kgZoom);
+
+  const container = svg.append('g');
+
+  // Build id→index map
+  const nodeById = {};
+  nodes.forEach((n, i) => { nodeById[n.id] = i; });
+
+  const validLinks = links.filter(l => nodeById[l.source] !== undefined && nodeById[l.target] !== undefined);
+
+  kgSimulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(validLinks).id(d => d.id).distance(55).strength(0.4))
+    .force('charge', d3.forceManyBody().strength(-180))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .force('collision', d3.forceCollide(14));
+
+  // Links
+  const link = container.append('g')
+    .selectAll('line').data(validLinks).enter()
+    .append('line')
+    .attr('stroke', '#2a3050')
+    .attr('stroke-width', d => (d.weight - 0.7) * 6 + 0.5)
+    .attr('opacity', 0.5);
+
+  // Nodes
+  const node = container.append('g')
+    .selectAll('circle').data(nodes).enter()
+    .append('circle')
+    .attr('r', 7)
+    .attr('fill', d => FW_COLORS[d.framework] || FW_COLORS.unknown)
+    .attr('stroke', 'var(--bg)')
+    .attr('stroke-width', 1.5)
+    .attr('cursor', 'pointer')
+    .on('click', (event, d) => showNodeInfo(d))
+    .on('mouseover', function() { d3.select(this).attr('r', 10); })
+    .on('mouseout', function() { d3.select(this).attr('r', 7); })
+    .call(d3.drag()
+      .on('start', (e, d) => { if (!e.active) kgSimulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag',  (e, d) => { d.fx=e.x; d.fy=e.y; })
+      .on('end',   (e, d) => { if (!e.active) kgSimulation.alphaTarget(0); d.fx=null; d.fy=null; }));
+
+  // Labels (hidden by default)
+  const labels = container.append('g').attr('class', 'kg-labels')
+    .selectAll('text').data(nodes).enter()
+    .append('text')
+    .text(d => (d.section || d.title || '').slice(0,20))
+    .attr('font-size', '8')
+    .attr('fill', 'var(--text-muted)')
+    .attr('dx', 9).attr('dy', 3)
+    .style('display', 'none')
+    .style('pointer-events', 'none');
+
+  kgSimulation.on('tick', () => {
+    link
+      .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    node.attr('cx', d => d.x).attr('cy', d => d.y);
+    labels.attr('x', d => d.x).attr('y', d => d.y);
+  });
+
+  window._kgLabels = labels;
+}
+
+function showNodeInfo(d) {
+  const box = $('node-info');
+  box.className = 'node-info-box has-data';
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <div class="fw-dot" style="background:${FW_COLORS[d.framework]||FW_COLORS.unknown};width:10px;height:10px;border-radius:50%"></div>
+      <strong style="font-size:13px">${d.framework}</strong>
+    </div>
+    <div style="margin-bottom:4px"><span style="color:var(--text-dim);font-size:10px">TITLE</span><br>${d.title || '—'}</div>
+    <div style="margin-bottom:4px"><span style="color:var(--text-dim);font-size:10px">SECTION</span><br>${d.section || '—'}</div>
+    ${d.entities && d.entities.length ? `<div style="margin-bottom:4px"><span style="color:var(--text-dim);font-size:10px">ENTITIES</span><br><span style="font-size:11px;color:var(--accent)">${d.entities.slice(0,5).join(', ')}</span></div>` : ''}
+    ${d.themes && d.themes.length ? `<div style="margin-bottom:4px"><span style="color:var(--text-dim);font-size:10px">THEMES</span><br><span style="font-size:11px">${d.themes.slice(0,4).join(', ')}</span></div>` : ''}
+    <div class="node-summary">${d.summary}</div>`;
+}
+
+function resetZoom() {
+  if (kgSvgRoot) kgSvgRoot.transition().duration(500).call(kgZoom.transform, d3.zoomIdentity);
+}
+
+function toggleLabels() {
+  showLabels = !showLabels;
+  if (window._kgLabels) window._kgLabels.style('display', showLabels ? 'block' : 'none');
+}
+
+// ════════════════════════════════════════════════════════
+// Init
+// ════════════════════════════════════════════════════════
+(async () => {
+  await Promise.all([loadKPIs(), loadChart(), loadNoRetSamples(), loadKG()]);
+})();
+</script>
+</body>
+</html>
