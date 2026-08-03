@@ -40,11 +40,10 @@ print(f"  Avg:    {int(sum(lengths)/len(lengths))}")
 
 # Detailed child chunks character-size distribution
 
-children = [c for c in chunks if c["type"] == "child"]
 lengths = sorted([len(c["text"]) for c in parents])
 
-buckets = [500, 1000, 2000, 4000, 8000, float("inf")]
-labels  = ["<500", "500-1k", "1k-2k", "2k-4k", "4k-8k", "8k+"]
+buckets = [500, 2000, 4000, 8000, 10000, 15000, 20000, 30000, 40000, float("inf")]
+labels  = ["<500", "500-2k", "2k-4k", "4k-8k", "8k-10k", "10k-15k", "15k-20k", "20k-30k", "30k-40k", "40k+"]
 counts  = [0] * len(labels)
 
 for l in lengths:
@@ -74,8 +73,8 @@ for cat, count in cats.most_common():
     print(f"  {cat:>20}: {count:>4} chunks ({pct:.1f}%)")
 
 print(f"\nBreakdown by category AND size bucket:")
-buckets = [1800, 2500, 4000, 8000, float("inf")]
-labels  = ["1.8k-2.5k", "2.5k-4k", "4k-8k", "8k+"]
+buckets = [1800, 2500, 4000, 8000, 10000, 12000, 15000, float("inf")]
+labels  = ["1.8k-2.5k", "2.5k-4k", "4k-8k", "8k-10k", "10k-12k", "12k-15k", "15k+"]
 for cat in ["descriptive_text", "code_snippet", "structured_table"]:
     cat_chunks = [c for c in oversized if c["metadata"]["content_category"] == cat]
     if not cat_chunks:
