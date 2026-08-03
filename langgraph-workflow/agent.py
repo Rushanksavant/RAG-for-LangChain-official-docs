@@ -323,8 +323,12 @@ graph = builder.compile(checkpointer=MemorySaver())
 
 async def run_agent(user_input: str, session_id: str) -> dict:
     """
-    Called by the Streamlit frontend.
+    Used by eval-pipeline.
+    Not used by streamlit-frontend. It uses the graph object directly.
+
     session_id maps to a LangGraph thread — each browser session gets its own memory.
+    Eval golden-data doesn't hold history based context questions. Hence, new 
+    session_id generated for each question (in evaluation/runner.py)
     """
     config = {"configurable": {"thread_id": session_id}}
 
@@ -333,4 +337,5 @@ async def run_agent(user_input: str, session_id: str) -> dict:
 
     return {"final_response" : result["final_response"],
         "status_mssg"        : result["status_mssg"],
-        "query_plan"         : result["query_plan"]}
+        "query_plan"         : result["query_plan"],
+        "retrieved_contexts" : result["retrieved_contexts"]}
