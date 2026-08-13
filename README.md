@@ -8,6 +8,7 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-Agent-1C3C3C?style=flat)](https://langchain-ai.github.io/langgraph)
 [![Qdrant](https://img.shields.io/badge/Qdrant-Vector_DB-DC244C?style=flat)](https://qdrant.tech)
 [![HuggingFace](https://img.shields.io/badge/🤗-HF_Spaces-FFD21E?style=flat)](https://huggingface.co/spaces)
+[![RAGAS](https://img.shields.io/badge/RAGAS-0.4.3-8B5CF6?style=flat)](https://docs.ragas.io)
 
 </div>
 
@@ -18,7 +19,8 @@
 Indexes the entire official LangChain documentation ecosystem into a hybrid vector database and exposes it through a multi-step LangGraph agent that plans, retrieves, and synthesizes answers — not just keyword matches. Custom chunking used to retain docs code-blocks & tables neatly. Deployed links:<br>
 [App link 🦜](https://huggingface.co/spaces/Rushank/LangGraph-RAG-Agent) <br>
 [MCP Server 🤗](https://huggingface.co/spaces/Rushank/langchain-rag-mcp-server/tree/main) <br>
-[Qdrant Cloud Cluster ☁](https://a0303a21-3a71-4b02-9a89-e87030c451ab.us-east4-0.gcp.cloud.qdrant.io:6333/dashboard#/collections)
+[Qdrant Cloud Cluster ☁](https://a0303a21-3a71-4b02-9a89-e87030c451ab.us-east4-0.gcp.cloud.qdrant.io:6333/dashboard#/collections) <br>
+[Eval Results Dashboard 📊](https://rag-for-langchain-official-docs.onrender.com)
 
 ---
 
@@ -59,10 +61,23 @@ Indexes the entire official LangChain documentation ecosystem into a hybrid vect
 │
 ├── langgraph-workflow/          # 🤗 Deployed: Streamlit + LangGraph agent
 │   ├── agent.py                 # Graph: plan → retrieve → map → reduce → answer
-|   ├── agent_contents/          # utilities, graphs and schemas
-|   ├── streamlit_contents/      # streamlit app working
+│   ├── agent_contents/          # utilities, graphs and schemas
+│   ├── streamlit_contents/      # streamlit app working
 │   ├── app.py                   # Streamlit chat UI
 │   └── Dockerfile
+│
+├── evaluations/                 # 📊 RAGAS synthetic eval: dataset gen + pipeline + dashboard
+│   ├── eval-data-generation.ipynb   # KG build → QA synthesis → golden_dataset.json (Kaggle)
+│   ├── get_agent_responses.py       # Run agent to get responses
+│   ├── eval-pipeline.ipynb          # Agent response categorization + RAGAS scoring (Kaggle)
+│   ├── dashboard/
+│   │   ├── app.py                   # Flask backend serving 4 API endpoints
+│   │   └── templates/index.html     # D3.js single-page results dashboard
+│   └── data/
+│       ├── golden_dataset.json          # 147 RAGAS-generated QA pairs
+│       ├── results.jsonl                # Agent responses + retrieval metadata
+│       ├── retrieval_scores_checkpoint.jsonl  # Per-sample RAGAS scores
+│       └── knowledge_graph.json         # RAGAS KG: nodes, edges, summaries, entities
 │
 ├── bin/                         # Shell scripts: data_pull.sh, chunking.sh, upsert_dB.sh
 └── docker/                      # Local Qdrant via Docker Compose
@@ -93,6 +108,23 @@ Query: "How do I add memory to a LangGraph agent?"
 
 ---
 
+## RAGAS Evaluation
+
+A synthetic golden dataset of 147 QA pairs was generated from the same documentation the agent indexes, then used to evaluate the full agent end-to-end. Because questions are grounded in the agent's own docs, any refusal or wrong answer is a genuine failure.
+
+**How it was built:** 250 documentation chunks were fed into RAGAS's `KnowledgeGraph` builder \running on Kaggle 2×T4 with Qwen 2.5 32B via Ollama. Two synthesizers produced 147 QA pairs: 60% single-hop, 40% multi-hop. The agent was then run on all 147 questions locally, and scored on Kaggle using Command-R 35B as the RAGAS judge — chosen because it's purpose-built for RAG grounding tasks.
+
+Results are split into three buckets: samples where retrieval was performed (117), no-retrieval answers the agent gave anyway (4), and guardrail refusals (24, counted as score=0).
+
+### Results
+
+| Metric | Score | Note |
+|---|---|---|
+| **Faithfulness** | **0.79** | 79% of agent claims grounded in retrieved context |
+| **Context Recall** | **0.77** | Retrieval covers 77% of reference answer content |
+| **Answer Correctness** | **0.53** | Gap is retrieval depth, not generation quality — agent faithfully summarises what it retrieves |
+
+
 ## Running locally
 
 **Prerequisites:** Docker Desktop, `uv`, API keys in `langgraph-workflow/.env`
@@ -101,6 +133,12 @@ Query: "How do I add memory to a LangGraph agent?"
 # 1. Start the agent
 uv run --with streamlit streamlit run langgraph-workflow/app.py
 # → http://localhost:8501
+
+# 2. (Optional) Start the eval dashboard
+cd evaluations/dashboard
+pip install flask
+python app.py
+# → http://localhost:5050
 ```
 
 **Updating the index** when LangChain docs change:
