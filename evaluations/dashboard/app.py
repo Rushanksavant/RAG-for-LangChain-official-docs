@@ -4,9 +4,11 @@ import os
 from flask import Flask, jsonify, render_template, abort
 from pathlib import Path
 
-app = Flask(__name__)
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+
+app = Flask(__name__, template_folder= TEMPLATE_DIR) # Explicitly tells Flask where to look for index.html
 
 # ─── Load data once at startup ───────────────────────────────────────────────
 
@@ -220,4 +222,6 @@ def knowledge_graph():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5050)
+    # On-Render sets the PORT environment variable automatically
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
