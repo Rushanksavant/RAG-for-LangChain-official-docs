@@ -24,12 +24,14 @@ import logging
 from pathlib import Path
 
 # ── resolve langgraph-workflow onto the path so agent.py is importable ────────
-ROOT_DIR     = Path(__file__).resolve().parent.parent
+ROOT_DIR     = Path(__file__).resolve().parent.parent.parent
 LANGGRAPH_WORKFLOW_DIR = ROOT_DIR / "langgraph-workflow"
 sys.path.insert(0, str(LANGGRAPH_WORKFLOW_DIR))
 
-DATASET_PATH = Path(__file__).parent / "data" / "golden_dataset.json"
+## For Ollama x Kaggle pipeline
+DATASET_PATH = Path(__file__).parent / "data" / "golden_dataset.json" 
 RESULTS_PATH = Path(__file__).parent / "data" / "results.jsonl"
+
 
 # Agent makes ~3 LLM calls per question on Gemini free tier (10 RPM).
 # 22s gap keeps us safely under that ceiling.
