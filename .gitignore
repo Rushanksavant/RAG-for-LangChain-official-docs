@@ -35,5 +35,8 @@ __pycache__/
 ## ignore DeepEval config
 .deepeval/
 
+## Ignore eval golden dataset and knowledge-graph files
+evaluations/data/
+evaluations/llm_api_pipeline/
 
 dB-maintenance/README.md
