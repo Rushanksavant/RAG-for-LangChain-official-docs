@@ -129,8 +129,8 @@ async def execute_retrieval(
     await log_callback("Step 1/5: Embeddings ready.")
 
     # ── Step 2: Hybrid search ─────────────────────────────────────────────────
-    await log_callback(f"Step 2/5: Running hybrid search (RRF fusion, prefetch={top_k_child * 2})...")
-    prefetch_limit = top_k_child * 2
+    await log_callback(f"Step 2/5: Running hybrid search (RRF fusion, prefetch={top_k_child * 4})...")
+    prefetch_limit = top_k_child * 4
 
     qdrant = _get_qdrant()
     # Run inside executor to prevent event loop blocking
@@ -174,11 +174,9 @@ async def execute_retrieval(
                                         with_payload=True,
                                         with_vectors=False))
 
-    parent_documents = []
-    for point in parent_points:
-        p = point.payload
-        if p and "text" in p:
-            parent_documents.append({"id": p.get("doc_id"), "text": p["text"]})
+    point_map = {p.payload.get("doc_id"): p.payload for p in parent_points if p.payload and "text" in p.payload}
+
+    parent_documents = [{"id": pid, "text": point_map[pid]["text"]} for pid in parent_ids if pid in point_map]
 
     if not parent_documents:
         await log_callback("Parent texts not found — returning empty result.")
