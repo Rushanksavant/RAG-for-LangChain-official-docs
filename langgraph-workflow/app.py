@@ -104,8 +104,8 @@ if st.session_state.processing and st.session_state.messages:
                 st.error(f"Processing Exception: {str(err)}")
                 st.session_state.messages.append({
                     "role": "assistant",
-                    "content": "⚠️ **System Execution Failure:** An internal script error occurred.",
-                    "meta": {"status_mssg": ["Internal Execution Exception Checked"]}
+                    "content": "💤 The HF-Space for MCP server is waking up, please re-enter your query in 30-45 seconds.",
+                    "meta": {"status_mssg": ["HF-spaces go to sleep, when left inactive for more than 15 mins."]}
                 })
             finally:
                 st.session_state.processing = False
